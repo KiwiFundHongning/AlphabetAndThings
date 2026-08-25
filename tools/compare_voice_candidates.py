@@ -30,6 +30,7 @@ CHINESE_WORDS = [
     "苹果", "球", "猫", "狗", "鸡蛋", "鱼", "葡萄", "帽子", "冰淇淋",
     "果汁", "风筝", "狮子", "月亮", "鼻子", "橙子", "熊猫", "兔子",
     "太阳", "火车", "雨伞", "鲸鱼", "斑马",
+    "挖掘机",
 ]
 
 
@@ -66,7 +67,12 @@ async def synthesize(text: str, voice: str, destination: Path) -> None:
     await edge_tts.Communicate(text, voice, rate="-4%", volume="+0%").save(str(destination))
 
 
-async def main_async(model_name: str, language_filter: str | None, voice_filter: str | None) -> None:
+async def main_async(
+    model_name: str,
+    language_filter: str | None,
+    voice_filter: str | None,
+    word_filter: set[str] | None,
+) -> None:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg is required")
@@ -84,7 +90,8 @@ async def main_async(model_name: str, language_filter: str | None, voice_filter:
                     continue
                 passed = 0
                 print(f"\n{voice}")
-                for index, word in enumerate(words):
+                selected_words = [word for word in words if word_filter is None or word in word_filter]
+                for index, word in enumerate(selected_words):
                     raw = root / f"{language}-{index}-raw.mp3"
                     repeated = root / f"{language}-{index}-repeated.wav"
                     await synthesize(word, voice, raw)
@@ -95,7 +102,7 @@ async def main_async(model_name: str, language_filter: str | None, voice_filter:
                     ok = normalized in {expected, expected * 2, expected * 3, expected * 4}
                     passed += int(ok)
                     print(f"  {word}: {actual!r} {'PASS' if ok else 'REVIEW'}")
-                print(f"  score: {passed}/{len(words)}")
+                print(f"  score: {passed}/{len(selected_words)}")
 
 
 def main() -> None:
@@ -103,8 +110,10 @@ def main() -> None:
     parser.add_argument("--model", default="small")
     parser.add_argument("--language", choices=("en", "zh"))
     parser.add_argument("--voice")
+    parser.add_argument("--words", help="Optional comma-separated exact words")
     args = parser.parse_args()
-    asyncio.run(main_async(args.model, args.language, args.voice))
+    words = {value.strip() for value in args.words.split(",") if value.strip()} if args.words else None
+    asyncio.run(main_async(args.model, args.language, args.voice, words))
 
 
 if __name__ == "__main__":

@@ -75,7 +75,8 @@ ITEMS = [
 
 async def synthesize(text: str, voice: str, destination: Path, semaphore: asyncio.Semaphore) -> None:
     async with semaphore:
-        await edge_tts.Communicate(text, voice, rate="-4%", volume="+0%").save(str(destination))
+        rate = "-10%" if voice == CHINESE_VOICE else "-4%"
+        await edge_tts.Communicate(text, voice, rate=rate, volume="+0%").save(str(destination))
 
 
 def combine_segments(
@@ -98,17 +99,24 @@ def combine_segments(
         f"anullsrc=r=24000:cl=mono:d={letter_word_pause:.3f}[letter_pause];"
         f"anullsrc=r=24000:cl=mono:d={word_chinese_pause:.3f}[chinese_pause];"
         "[letter][letter_pause][word][chinese_pause][chinese]"
-        "concat=n=5:v=0:a=1,loudnorm=I=-16:TP=-2:LRA=6[out]"
+        # Edge voice files are already level-matched. Avoid a second loudness
+        # transform because it can blur very short Mandarin syllable endings.
+        "concat=n=5:v=0:a=1[out]"
     )
     subprocess.run(
         [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(letter),
          "-i", str(word), "-i", str(chinese), "-filter_complex", filters,
-         "-map", "[out]", "-codec:a", "libmp3lame", "-b:a", "80k", str(destination)],
+         "-map", "[out]", "-codec:a", "libmp3lame", "-b:a", "128k", str(destination)],
         check=True,
     )
 
 
-async def generate(output: Path, letter_word_pause: float, word_chinese_pause: float) -> None:
+async def generate(
+    output: Path,
+    letter_word_pause: float,
+    word_chinese_pause: float,
+    selected_ids: set[str] | None = None,
+) -> None:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg is required to assemble the narration clips")
@@ -125,7 +133,8 @@ async def generate(output: Path, letter_word_pause: float, word_chinese_pause: f
 
         sources: list[tuple[str, str, str, str, Path, Path]] = []
         jobs = []
-        for item_id, letter, word, chinese in ITEMS:
+        selected_items = [item for item in ITEMS if selected_ids is None or item[0] in selected_ids]
+        for item_id, letter, word, chinese in selected_items:
             word_file = temp_root / f"{item_id}-word.mp3"
             chinese_file = temp_root / f"{item_id}-zh.mp3"
             sources.append((item_id, letter, word, chinese, word_file, chinese_file))
@@ -148,8 +157,10 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--letter-word-pause", type=float, default=0.8)
     parser.add_argument("--word-chinese-pause", type=float, default=0.45)
+    parser.add_argument("--ids", help="Optional comma-separated item ids")
     args = parser.parse_args()
-    asyncio.run(generate(args.output, args.letter_word_pause, args.word_chinese_pause))
+    selected_ids = {value.strip() for value in args.ids.split(",") if value.strip()} if args.ids else None
+    asyncio.run(generate(args.output, args.letter_word_pause, args.word_chinese_pause, selected_ids))
 
 
 if __name__ == "__main__":
