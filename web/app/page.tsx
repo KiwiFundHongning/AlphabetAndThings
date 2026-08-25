@@ -88,7 +88,7 @@ const emptyProgress = (): Progress => ({
   totalSeconds: 0,
   sessions: 0,
   volume: 0.85,
-  musicVolume: 0.12,
+  musicVolume: 0.2,
 });
 
 function shuffle<T>(items: T[]): T[] {
@@ -110,8 +110,8 @@ function readProgress(): Progress {
       sessions: Number.isFinite(stored.sessions) ? stored.sessions ?? 0 : 0,
       volume: typeof stored.volume === 'number' ? Math.min(1, Math.max(0, stored.volume)) : 0.85,
       musicVolume: typeof stored.musicVolume === 'number'
-        ? Math.min(0.35, Math.max(0, stored.musicVolume))
-        : 0.12,
+        ? Math.min(0.4, Math.max(0, stored.musicVolume === 0.12 ? 0.2 : stored.musicVolume))
+        : 0.2,
     };
   } catch {
     return emptyProgress();
@@ -155,6 +155,7 @@ export default function Home() {
   const actionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const narrationRef = useRef<HTMLAudioElement | null>(null);
   const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
+  const voiceCacheRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
   const current = questions[questionIndex];
 
@@ -199,7 +200,7 @@ export default function Home() {
     backgroundMusicRef.current.currentTime = 0;
   }, []);
 
-  const startMusic = useCallback(() => {
+  const getBackgroundMusic = useCallback(() => {
     let music = backgroundMusicRef.current;
     if (!music) {
       music = new Audio(new URL('audio/music/gentle-ocean-play.mp3', document.baseURI).toString());
@@ -207,20 +208,37 @@ export default function Home() {
       music.preload = 'auto';
       backgroundMusicRef.current = music;
     }
+    return music;
+  }, []);
+
+  const startMusic = useCallback(() => {
+    const music = getBackgroundMusic();
+    music.muted = false;
     applyMusicVolume(false);
     music.play().catch(() => undefined);
-  }, [applyMusicVolume]);
+  }, [applyMusicVolume, getBackgroundMusic]);
+
+  const getPronunciation = useCallback((item: LetterItem) => {
+    let narration = voiceCacheRef.current.get(item.letter);
+    if (!narration) {
+      narration = new Audio(
+        new URL(`audio/voice/${item.letter.toLowerCase()}.mp3`, document.baseURI).toString(),
+      );
+      narration.preload = 'auto';
+      voiceCacheRef.current.set(item.letter, narration);
+    }
+    return narration;
+  }, []);
 
   const playPronunciation = useCallback((item: LetterItem) => {
     narrationRef.current?.pause();
+    if (narrationRef.current) narrationRef.current.currentTime = 0;
     narrationRef.current = null;
     applyMusicVolume(false);
     if (progressRef.current.volume <= 0) return;
 
-    const narration = new Audio(
-      new URL(`audio/voice/${item.letter.toLowerCase()}.mp3`, document.baseURI).toString(),
-    );
-    narration.preload = 'auto';
+    const narration = getPronunciation(item);
+    narration.currentTime = 0;
     narration.volume = progressRef.current.volume;
     narrationRef.current = narration;
     applyMusicVolume(true);
@@ -229,10 +247,15 @@ export default function Home() {
       if (narrationRef.current === narration) narrationRef.current = null;
       applyMusicVolume(false);
     };
-    narration.addEventListener('ended', restoreMusic, { once: true });
-    narration.addEventListener('error', restoreMusic, { once: true });
+    narration.onended = restoreMusic;
+    narration.onerror = restoreMusic;
     narration.play().catch(restoreMusic);
-  }, [applyMusicVolume]);
+  }, [applyMusicVolume, getPronunciation]);
+
+  useEffect(() => {
+    getBackgroundMusic().load();
+    LETTERS.forEach((item) => getPronunciation(item).load());
+  }, [getBackgroundMusic, getPronunciation]);
 
   const playTone = useCallback((kind: 'correct' | 'wrong') => {
     if (progressRef.current.volume <= 0) return;
@@ -260,17 +283,13 @@ export default function Home() {
     window.setTimeout(() => context.close().catch(() => undefined), 800);
   }, []);
 
-  useEffect(() => {
-    if (screen !== 'playing' || !current || feedback) return;
-    const timer = window.setTimeout(() => playPronunciation(current.item), 220);
-    return () => window.clearTimeout(timer);
-  }, [current, feedback, playPronunciation, screen]);
-
   const startGame = () => {
     if (actionTimer.current) clearTimeout(actionTimer.current);
     narrationRef.current?.pause();
+    const nextQuestions = buildQuestions(progressRef.current);
     startMusic();
-    setQuestions(buildQuestions(progressRef.current));
+    playPronunciation(nextQuestions[0].item);
+    setQuestions(nextQuestions);
     setQuestionIndex(0);
     setWrongCount(0);
     setAssist(false);
@@ -302,9 +321,52 @@ export default function Home() {
     setScreen('home');
   };
 
+  const finishCorrectFeedback = useCallback(() => {
+    if (actionTimer.current) {
+      clearTimeout(actionTimer.current);
+      actionTimer.current = null;
+    }
+    narrationRef.current?.pause();
+    if (narrationRef.current) narrationRef.current.currentTime = 0;
+    narrationRef.current = null;
+    applyMusicVolume(false);
+
+    if (questionIndex >= questions.length - 1) {
+      addElapsedTime(true);
+      stopMusic();
+      setScreen('complete');
+      return;
+    }
+
+    const nextIndex = questionIndex + 1;
+    setQuestionIndex(nextIndex);
+    setWrongCount(0);
+    setAssist(false);
+    setLocked(false);
+    setFeedback(null);
+    setSelectedLetter(null);
+    playPronunciation(questions[nextIndex].item);
+  }, [addElapsedTime, applyMusicVolume, playPronunciation, questionIndex, questions, stopMusic]);
+
+  const dismissWrongFeedback = useCallback(() => {
+    if (actionTimer.current) {
+      clearTimeout(actionTimer.current);
+      actionTimer.current = null;
+    }
+    setLocked(false);
+    setFeedback(null);
+    setSelectedLetter(null);
+  }, []);
+
+  const skipFeedback = useCallback(() => {
+    if (feedback === 'correct') finishCorrectFeedback();
+    if (feedback === 'wrong') dismissWrongFeedback();
+  }, [dismissWrongFeedback, feedback, finishCorrectFeedback]);
+
   const answerQuestion = useCallback((letter: string) => {
     if (!current || locked || (assist && letter !== current.item.letter)) return;
 
+    startMusic();
     setLocked(true);
     setSelectedLetter(letter);
 
@@ -334,20 +396,7 @@ export default function Home() {
         };
       });
 
-      actionTimer.current = setTimeout(() => {
-        if (questionIndex >= questions.length - 1) {
-          addElapsedTime(true);
-          stopMusic();
-          setScreen('complete');
-        } else {
-          setQuestionIndex((index) => index + 1);
-          setWrongCount(0);
-          setAssist(false);
-          setLocked(false);
-          setFeedback(null);
-          setSelectedLetter(null);
-        }
-      }, 4200);
+      actionTimer.current = setTimeout(finishCorrectFeedback, 4200);
       return;
     }
 
@@ -357,18 +406,21 @@ export default function Home() {
     setFeedback('wrong');
     playTone('wrong');
 
-    actionTimer.current = setTimeout(() => {
-      setLocked(false);
-      setFeedback(null);
-      setSelectedLetter(null);
-    }, 720);
-  }, [addElapsedTime, assist, current, locked, playPronunciation, playTone, questionIndex, questions.length, saveProgress, stopMusic, wrongCount]);
+    actionTimer.current = setTimeout(dismissWrongFeedback, 720);
+  }, [assist, current, dismissWrongFeedback, finishCorrectFeedback, locked, playPronunciation, playTone, saveProgress, startMusic, wrongCount]);
 
   useEffect(() => {
     if (screen !== 'playing' || !current) return;
 
     const handleLetterKey = (event: KeyboardEvent) => {
       if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (feedback) {
+        if (event.key.length === 1 || event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          skipFeedback();
+        }
+        return;
+      }
       const letter = event.key.toUpperCase();
       if (!current.choices.includes(letter)) return;
       event.preventDefault();
@@ -377,7 +429,7 @@ export default function Home() {
 
     window.addEventListener('keydown', handleLetterKey);
     return () => window.removeEventListener('keydown', handleLetterKey);
-  }, [answerQuestion, current, screen]);
+  }, [answerQuestion, current, feedback, screen, skipFeedback]);
 
   const beginParentHold = () => {
     if (gateTimer.current) clearTimeout(gateTimer.current);
@@ -437,15 +489,17 @@ export default function Home() {
               <span className={index <= questionIndex ? 'progress-dot active' : 'progress-dot'} key={`${question.item.letter}-${index}`} />
             ))}
           </div>
-          <button className="round-icon-button speaker-button" type="button" onClick={() => playPronunciation(current.item)} aria-label="再听字母和物品读音">🔊</button>
+          <button className="round-icon-button speaker-button" type="button" onClick={() => { startMusic(); playPronunciation(current.item); }} aria-label="再听字母和物品读音">🔊</button>
         </header>
 
         <section className="question-area">
           <div className="learning-focus">
             <ThingPicture item={current.item} className="focus-picture" />
             <div className="focus-caption">
-              <strong style={{ background: current.item.color }}>{current.item.letter}</strong>
-              <span>{current.item.word}</span>
+              <span className="focus-word">
+                <strong>{current.item.letter}</strong>
+                <b>{current.item.word.slice(1)}</b>
+              </span>
               <small>{current.item.chinese}</small>
             </div>
           </div>
@@ -484,19 +538,26 @@ export default function Home() {
           </div>
         </section>
 
+        {feedback === 'wrong' && (
+          <button className="feedback-skip-layer" type="button" onClick={skipFeedback} aria-label="跳过错误动画，继续作答" />
+        )}
+
         {feedback === 'correct' && (
-          <div className="reward-overlay" role="status" aria-live="assertive">
-            <div className="reward-card" style={{ borderColor: current.item.color }}>
+          <button className="reward-overlay" type="button" onClick={skipFeedback} aria-label="跳过正确动画，继续下一题">
+            <div className="reward-card">
               <div className="reward-stars" aria-hidden="true">★ ✦ ★</div>
               <ThingPicture item={current.item} className="reward-picture" />
               <div className="reward-word">
-                <strong>{current.item.letter}</strong>
-                <span>{current.item.word}</span>
+                <span className="reward-english">
+                  <strong>{current.item.letter}</strong>
+                  {current.item.word.slice(1)}
+                </span>
                 <small>{current.item.chinese}</small>
               </div>
               <p>太棒了！</p>
+              <small className="skip-hint">点击或按任意键继续</small>
             </div>
-          </div>
+          </button>
         )}
       </main>
     );
@@ -566,7 +627,7 @@ export default function Home() {
               <input
                 type="range"
                 min="0"
-                max="0.35"
+                max="0.4"
                 step="0.01"
                 value={progress.musicVolume}
                 onChange={(event) => updateMusicVolume(Number(event.target.value))}

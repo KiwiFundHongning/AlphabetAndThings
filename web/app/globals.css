@@ -516,6 +516,7 @@ button:focus-visible {
   height: 66px;
   place-items: center;
   border-radius: 21px;
+  background: #ef6475;
   color: #fff;
   font-size: 45px;
   line-height: 1;
@@ -523,7 +524,13 @@ button:focus-visible {
   box-shadow: inset 0 -6px 0 rgba(112, 42, 53, .13);
 }
 
-.focus-caption span {
+.focus-word {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.focus-word b {
   font-size: clamp(27px, 3.2vw, 39px);
   font-weight: 900;
 }
@@ -539,6 +546,7 @@ button:focus-visible {
   width: min(760px, 100%);
   place-items: center;
   align-content: center;
+  justify-content: center;
   gap: clamp(24px, 4vw, 46px);
   padding: 25px 0 12px;
 }
@@ -581,8 +589,8 @@ button:focus-visible {
 }
 
 .letter-choice:nth-child(2) {
-  background: linear-gradient(155deg, #f27d8d, #db586c);
-  box-shadow: 0 13px 0 #b84358, 0 21px 34px rgba(113, 43, 61, .18);
+  background: linear-gradient(155deg, #78c982, #4caa60);
+  box-shadow: 0 13px 0 #378747, 0 21px 34px rgba(46, 111, 58, .18);
 }
 
 .letter-choice:nth-child(3) {
@@ -592,6 +600,8 @@ button:focus-visible {
 
 .letter-choice:hover:not(:disabled) { transform: translateY(-5px) rotate(-1deg); }
 .letter-choice:active:not(:disabled) { transform: translateY(8px); box-shadow: 0 5px 0 #3768aa; }
+.letter-choice:nth-child(2):active:not(:disabled) { box-shadow: 0 5px 0 #378747; }
+.letter-choice:nth-child(3):active:not(:disabled) { box-shadow: 0 5px 0 #bd7e2d; }
 .letter-choice:disabled { cursor: default; }
 .letter-choice.wrong-choice { animation: gentle-shake .42s ease; filter: saturate(.78); }
 .letter-choice.correct-choice { transform: scale(1.05); filter: brightness(1.08); }
@@ -612,8 +622,22 @@ button:focus-visible {
   display: grid;
   place-items: center;
   padding: 20px;
+  border: 0;
   background: rgba(223, 245, 255, .68);
   backdrop-filter: blur(6px);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: inherit;
+}
+
+.feedback-skip-layer {
+  position: fixed;
+  z-index: 10;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
 }
 
 .reward-card {
@@ -624,7 +648,7 @@ button:focus-visible {
   place-items: center;
   padding: 28px;
   overflow: hidden;
-  border: 9px solid;
+  border: 9px solid #ef6475;
   border-radius: 48px;
   background: #fffdf4;
   box-shadow: 0 24px 60px rgba(37, 75, 104, .24);
@@ -660,10 +684,11 @@ button:focus-visible {
   color: #304e68;
 }
 
+.reward-english { font-size: 31px; font-weight: 900; }
 .reward-word strong { color: #e9566b; font-size: 49px; }
-.reward-word span { font-size: 31px; font-weight: 900; }
 .reward-word small { color: #687f91; font-size: 21px; font-weight: 800; }
 .reward-card > p { margin: 4px 0 0; color: #47769d; font-size: 24px; font-weight: 900; }
+.reward-card > .skip-hint { color: #7890a2; font-size: 14px; font-weight: 800; }
 
 /* Completion */
 .celebration-shell {
@@ -918,7 +943,7 @@ button:focus-visible {
   .focus-picture { width: clamp(188px, 33vh, 250px); height: clamp(188px, 33vh, 250px); border-width: 4px; }
   .focus-caption { gap: 8px; }
   .focus-caption strong { width: 54px; height: 54px; border-radius: 17px; font-size: 38px; }
-  .focus-caption span { font-size: 26px; }
+  .focus-word b { font-size: 26px; }
   .focus-caption small { font-size: 17px; }
 
   .choice-grid,
