@@ -21,11 +21,13 @@ body {
 
 button { font: inherit; }
 
-.emoji,
-.friend-thing,
-.reward-emoji,
-.stat-emoji {
-  font-family: "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+.thing-picture {
+  display: inline-block;
+  flex: 0 0 auto;
+  background-position: var(--atlas-x) var(--atlas-y);
+  background-repeat: no-repeat;
+  background-size: 600% 400%;
+  border-radius: 22%;
 }
 
 .home-shell {
@@ -70,9 +72,11 @@ button { font: inherit; }
 }
 
 .brand-apple {
-  margin: 0 0 -23px -9px;
-  font-family: "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
-  font-size: 31px;
+  width: 34px;
+  height: 34px;
+  margin: 0 0 -25px -10px;
+  border: 2px solid rgba(255,255,255,.72);
+  box-shadow: 0 3px 6px rgba(74, 74, 53, .16);
 }
 
 .grown-up-button {
@@ -307,10 +311,11 @@ h1 small {
 }
 
 .friend-thing {
+  width: 66px;
+  height: 66px;
   margin-top: 8px;
-  font-family: "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
-  font-size: 57px;
-  filter: drop-shadow(0 4px 1px rgba(44, 79, 104, 0.16));
+  border: 3px solid rgba(255,255,255,.74);
+  box-shadow: 0 4px 8px rgba(44, 79, 104, 0.16);
 }
 
 .friend-apple { top: 30px; left: 7%; transform: rotate(-7deg); background: #f06376; }
@@ -479,10 +484,10 @@ button:focus-visible {
 
 .prompt-card {
   display: flex;
-  min-width: min(570px, 100%);
+  min-width: min(650px, 100%);
   align-items: center;
   justify-content: center;
-  gap: 21px;
+  gap: 25px;
   padding: 13px 24px;
   border: 4px solid #fff;
   border-radius: 28px;
@@ -490,15 +495,34 @@ button:focus-visible {
   box-shadow: 0 10px 24px rgba(55, 97, 128, .12);
 }
 
+.prompt-thing {
+  width: 128px;
+  height: 128px;
+  border: 4px solid #fff;
+  box-shadow: 0 7px 16px rgba(55, 83, 104, .15);
+}
+
+.prompt-copy {
+  display: grid;
+  justify-items: start;
+  gap: 5px;
+}
+
+.prompt-letter-line {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
 .prompt-card p,
-.prompt-card span {
+.prompt-letter-line > span {
   margin: 0;
   color: #58738a;
   font-size: clamp(19px, 2.4vw, 26px);
   font-weight: 800;
 }
 
-.prompt-card span {
+.prompt-letter-line > span {
   color: #5f80a0;
   font-size: clamp(16px, 2vw, 21px);
 }
@@ -517,6 +541,12 @@ button:focus-visible {
   box-shadow: inset 0 -7px 0 rgba(112, 42, 53, .13);
 }
 
+.prompt-card small {
+  color: #657f94;
+  font-size: clamp(15px, 1.8vw, 19px);
+  font-weight: 900;
+}
+
 .choice-grid {
   display: grid;
   width: min(880px, 100%);
@@ -531,11 +561,13 @@ button:focus-visible {
 .choice-grid.choices-3 { grid-template-columns: repeat(3, minmax(170px, 240px)); }
 
 .letter-choice {
-  display: grid;
+  display: flex;
   width: 100%;
   aspect-ratio: 1 / .9;
   min-height: 210px;
-  place-items: center;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   border: 8px solid #fff;
   border-radius: 42px;
   background: linear-gradient(155deg, #71a8f0, #4d83d9);
@@ -549,6 +581,18 @@ button:focus-visible {
   transition: transform .16s ease, filter .16s ease, box-shadow .16s ease;
   touch-action: manipulation;
   user-select: none;
+}
+
+.letter-choice > span { line-height: .88; }
+
+.letter-choice > small {
+  margin-top: 15px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.2);
+  font-size: clamp(13px, 1.6vw, 17px);
+  letter-spacing: .04em;
+  text-shadow: none;
 }
 
 .letter-choice:nth-child(2) {
@@ -617,9 +661,11 @@ button:focus-visible {
   letter-spacing: 16px;
 }
 
-.reward-emoji {
-  font-size: 115px;
-  filter: drop-shadow(0 8px 5px rgba(56, 79, 93, .18));
+.reward-picture {
+  width: 148px;
+  height: 148px;
+  border: 5px solid #fff;
+  box-shadow: 0 9px 18px rgba(56, 79, 93, .18);
 }
 
 .reward-word {
@@ -769,7 +815,13 @@ button:focus-visible {
 .letter-stat strong { color: #42637c; font-size: 15px; }
 .letter-stat p { margin-top: 3px; font-size: 12px; }
 .letter-stat small { color: #91a0aa; font-size: 11px; }
-.stat-emoji { padding-right: 6px; font-size: 32px; }
+.stat-picture {
+  width: 52px;
+  height: 52px;
+  margin-right: 4px;
+  border: 2px solid #fff;
+  box-shadow: 0 3px 8px rgba(46, 74, 93, .12);
+}
 
 .reset-confirm { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; color: #a14b51; font-size: 14px; font-weight: 800; }
 .reset-confirm button { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: #f3e8e9; color: #9f454d; cursor: pointer; font-weight: 800; }
@@ -818,7 +870,7 @@ button:focus-visible {
   .rainbow { right: 8%; width: 84%; height: 280px; }
   .friend { width: 150px; height: 170px; }
   .friend-letter { font-size: 67px; }
-  .friend-thing { font-size: 45px; }
+  .friend-thing { width: 54px; height: 54px; }
 
   .choice-grid.choices-3 {
     grid-template-columns: repeat(2, minmax(150px, 240px));
@@ -871,9 +923,13 @@ button:focus-visible {
 
   .question-area { width: calc(100% - 24px); padding-top: 4px; }
   .prompt-card { min-width: 100%; gap: 11px; border-radius: 20px; padding: 10px 12px; }
+  .prompt-thing { width: 88px; height: 88px; border-width: 3px; }
+  .prompt-copy { gap: 2px; }
+  .prompt-letter-line { gap: 9px; }
   .prompt-card strong { width: 64px; height: 64px; border-radius: 19px; font-size: 44px; }
   .prompt-card p { font-size: 18px; }
-  .prompt-card span { font-size: 14px; }
+  .prompt-letter-line > span { font-size: 14px; }
+  .prompt-card small { font-size: 13px; }
 
   .choice-grid,
   .choice-grid.choices-2,
@@ -885,9 +941,10 @@ button:focus-visible {
 
   .choice-grid.choices-3 .letter-choice:last-child { width: 48%; }
   .letter-choice { min-height: 150px; border-width: 6px; border-radius: 30px; font-size: 88px; box-shadow: 0 9px 0 #3768aa, 0 15px 24px rgba(43,79,113,.17); }
+  .letter-choice > small { margin-top: 10px; padding: 4px 9px; font-size: 11px; }
 
   .reward-card { min-height: 350px; border-width: 7px; border-radius: 38px; }
-  .reward-emoji { font-size: 94px; }
+  .reward-picture { width: 126px; height: 126px; }
   .reward-word { flex-wrap: wrap; justify-content: center; }
 
   .celebration-shell { padding: 18px; }
@@ -900,7 +957,7 @@ button:focus-visible {
   .parent-panel { padding: 18px; border-radius: 20px; }
   .letter-stat { grid-template-columns: 52px 1fr; }
   .stat-letter { width: 52px; height: 52px; }
-  .stat-emoji { display: none; }
+  .stat-picture { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

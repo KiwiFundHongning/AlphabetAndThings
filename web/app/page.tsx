@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 type LetterItem = {
   letter: string;
   word: string;
   chinese: string;
-  emoji: string;
+  atlasColumn: number;
+  atlasRow: number;
   color: string;
 };
 
@@ -32,32 +33,54 @@ type Screen = 'home' | 'playing' | 'complete' | 'parent';
 type Feedback = 'correct' | 'wrong' | null;
 
 const LETTERS: LetterItem[] = [
-  { letter: 'A', word: 'Apple', chinese: '苹果', emoji: '🍎', color: '#ef6475' },
-  { letter: 'B', word: 'Ball', chinese: '球', emoji: '⚽', color: '#f2b84b' },
-  { letter: 'C', word: 'Cat', chinese: '猫', emoji: '🐱', color: '#678ee7' },
-  { letter: 'D', word: 'Dog', chinese: '狗', emoji: '🐶', color: '#9a77db' },
-  { letter: 'E', word: 'Egg', chinese: '鸡蛋', emoji: '🥚', color: '#55bca8' },
-  { letter: 'F', word: 'Fish', chinese: '鱼', emoji: '🐟', color: '#4ba6df' },
-  { letter: 'G', word: 'Grapes', chinese: '葡萄', emoji: '🍇', color: '#9872d7' },
-  { letter: 'H', word: 'Hat', chinese: '帽子', emoji: '🎩', color: '#ee7b5a' },
-  { letter: 'I', word: 'Ice cream', chinese: '冰淇淋', emoji: '🍦', color: '#e98dba' },
-  { letter: 'J', word: 'Juice', chinese: '果汁', emoji: '🧃', color: '#f29b3f' },
-  { letter: 'K', word: 'Kite', chinese: '风筝', emoji: '🪁', color: '#5e9de1' },
-  { letter: 'L', word: 'Lion', chinese: '狮子', emoji: '🦁', color: '#e9a83d' },
-  { letter: 'M', word: 'Moon', chinese: '月亮', emoji: '🌙', color: '#697bd9' },
-  { letter: 'N', word: 'Nose', chinese: '鼻子', emoji: '👃', color: '#df7f7d' },
-  { letter: 'O', word: 'Orange', chinese: '橙子', emoji: '🍊', color: '#ee913e' },
-  { letter: 'P', word: 'Panda', chinese: '熊猫', emoji: '🐼', color: '#5e7a8b' },
-  { letter: 'R', word: 'Rabbit', chinese: '兔子', emoji: '🐰', color: '#d880b8' },
-  { letter: 'S', word: 'Sun', chinese: '太阳', emoji: '☀️', color: '#efbb39' },
-  { letter: 'T', word: 'Train', chinese: '火车', emoji: '🚂', color: '#e05f61' },
-  { letter: 'U', word: 'Umbrella', chinese: '雨伞', emoji: '☂️', color: '#5baecf' },
-  { letter: 'W', word: 'Whale', chinese: '鲸鱼', emoji: '🐋', color: '#4e94d7' },
-  { letter: 'Z', word: 'Zebra', chinese: '斑马', emoji: '🦓', color: '#657681' },
+  { letter: 'A', word: 'Apple', chinese: '苹果', atlasColumn: 0, atlasRow: 0, color: '#ef6475' },
+  { letter: 'B', word: 'Ball', chinese: '球', atlasColumn: 1, atlasRow: 0, color: '#f2b84b' },
+  { letter: 'C', word: 'Cat', chinese: '猫', atlasColumn: 2, atlasRow: 0, color: '#678ee7' },
+  { letter: 'D', word: 'Dog', chinese: '狗', atlasColumn: 3, atlasRow: 0, color: '#9a77db' },
+  { letter: 'E', word: 'Egg', chinese: '鸡蛋', atlasColumn: 4, atlasRow: 0, color: '#55bca8' },
+  { letter: 'F', word: 'Fish', chinese: '鱼', atlasColumn: 5, atlasRow: 0, color: '#4ba6df' },
+  { letter: 'G', word: 'Grapes', chinese: '葡萄', atlasColumn: 0, atlasRow: 1, color: '#9872d7' },
+  { letter: 'H', word: 'Hat', chinese: '帽子', atlasColumn: 1, atlasRow: 1, color: '#ee7b5a' },
+  { letter: 'I', word: 'Ice cream', chinese: '冰淇淋', atlasColumn: 2, atlasRow: 1, color: '#e98dba' },
+  { letter: 'J', word: 'Juice', chinese: '果汁', atlasColumn: 3, atlasRow: 1, color: '#f29b3f' },
+  { letter: 'K', word: 'Kite', chinese: '风筝', atlasColumn: 4, atlasRow: 1, color: '#5e9de1' },
+  { letter: 'L', word: 'Lion', chinese: '狮子', atlasColumn: 5, atlasRow: 1, color: '#e9a83d' },
+  { letter: 'M', word: 'Moon', chinese: '月亮', atlasColumn: 0, atlasRow: 2, color: '#697bd9' },
+  { letter: 'N', word: 'Nose', chinese: '鼻子', atlasColumn: 1, atlasRow: 2, color: '#df7f7d' },
+  { letter: 'O', word: 'Orange', chinese: '橙子', atlasColumn: 2, atlasRow: 2, color: '#ee913e' },
+  { letter: 'P', word: 'Panda', chinese: '熊猫', atlasColumn: 3, atlasRow: 2, color: '#5e7a8b' },
+  { letter: 'R', word: 'Rabbit', chinese: '兔子', atlasColumn: 4, atlasRow: 2, color: '#d880b8' },
+  { letter: 'S', word: 'Sun', chinese: '太阳', atlasColumn: 5, atlasRow: 2, color: '#efbb39' },
+  { letter: 'T', word: 'Train', chinese: '火车', atlasColumn: 0, atlasRow: 3, color: '#e05f61' },
+  { letter: 'U', word: 'Umbrella', chinese: '雨伞', atlasColumn: 1, atlasRow: 3, color: '#5baecf' },
+  { letter: 'W', word: 'Whale', chinese: '鲸鱼', atlasColumn: 2, atlasRow: 3, color: '#4e94d7' },
+  { letter: 'Z', word: 'Zebra', chinese: '斑马', atlasColumn: 3, atlasRow: 3, color: '#657681' },
 ];
 
 const STORAGE_KEY = 'alphabet-and-things-progress-v1';
 const QUESTION_COUNT = 5;
+
+type AtlasStyle = CSSProperties & {
+  '--atlas-x': string;
+  '--atlas-y': string;
+};
+
+function ThingPicture({ item, className = '' }: { item: LetterItem; className?: string }) {
+  const style: AtlasStyle = {
+    backgroundImage: "url('things/object-atlas-v2.png')",
+    '--atlas-x': `${item.atlasColumn * 20}%`,
+    '--atlas-y': `${item.atlasRow * (100 / 3)}%`,
+  };
+
+  return (
+    <span
+      className={`thing-picture ${className}`.trim()}
+      style={style}
+      role="img"
+      aria-label={`${item.word}，${item.chinese}`}
+    />
+  );
+}
 
 const emptyProgress = (): Progress => ({
   letters: {},
@@ -159,7 +182,8 @@ export default function Home() {
   const speakParts = useCallback((parts: Array<{ text: string; lang: 'zh-CN' | 'en-US' }>) => {
     if (!('speechSynthesis' in window) || progressRef.current.volume <= 0) return;
     window.speechSynthesis.cancel();
-    const voices = window.speechSynthesis.getVoices();
+    const voices = window.speechSynthesis.getVoices().filter((voice) => voice.localService);
+    if (!voices.length) return;
 
     parts.forEach(({ text, lang }) => {
       const utterance = new SpeechSynthesisUtterance(text);
@@ -168,8 +192,8 @@ export default function Home() {
       utterance.pitch = 1.28;
       utterance.volume = progressRef.current.volume;
       utterance.voice = voices.find((voice) => (
-        voice.localService && voice.lang.toLowerCase().startsWith(lang.slice(0, 2).toLowerCase())
-      )) ?? voices.find((voice) => voice.localService) ?? null;
+        voice.lang.toLowerCase().startsWith(lang.slice(0, 2).toLowerCase())
+      )) ?? voices[0];
       window.speechSynthesis.speak(utterance);
     });
   }, []);
@@ -248,7 +272,7 @@ export default function Home() {
     setScreen('home');
   };
 
-  const answerQuestion = (letter: string) => {
+  const answerQuestion = useCallback((letter: string) => {
     if (!current || locked || (assist && letter !== current.item.letter)) return;
 
     setLocked(true);
@@ -319,7 +343,22 @@ export default function Home() {
       setFeedback(null);
       setSelectedLetter(null);
     }, 720);
-  };
+  }, [addElapsedTime, assist, current, locked, playTone, questionIndex, questions.length, saveProgress, speakParts, wrongCount]);
+
+  useEffect(() => {
+    if (screen !== 'playing' || !current) return;
+
+    const handleLetterKey = (event: KeyboardEvent) => {
+      if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+      const letter = event.key.toUpperCase();
+      if (!current.choices.includes(letter)) return;
+      event.preventDefault();
+      answerQuestion(letter);
+    };
+
+    window.addEventListener('keydown', handleLetterKey);
+    return () => window.removeEventListener('keydown', handleLetterKey);
+  }, [answerQuestion, current, screen]);
 
   const beginParentHold = () => {
     if (gateTimer.current) clearTimeout(gateTimer.current);
@@ -374,9 +413,15 @@ export default function Home() {
 
         <section className="question-area">
           <div className="prompt-card">
-            <p>请找到</p>
-            <strong>{current.item.letter}</strong>
-            <span>Find {current.item.letter}</span>
+            <ThingPicture item={current.item} className="prompt-thing" />
+            <div className="prompt-copy">
+              <p>请找到</p>
+              <div className="prompt-letter-line">
+                <strong style={{ background: current.item.color }}>{current.item.letter}</strong>
+                <span>Find {current.item.letter}</span>
+              </div>
+              <small>{current.item.word} · {current.item.chinese}</small>
+            </div>
           </div>
 
           <div className={`choice-grid choices-${current.choices.length}`}>
@@ -399,15 +444,17 @@ export default function Home() {
                   onClick={() => answerQuestion(letter)}
                   aria-label={`字母 ${letter}`}
                 >
-                  {letter}
+                  <span>{letter}</span>
+                  <small>按 {letter} 键</small>
                 </button>
               );
             })}
           </div>
 
           <div className="feedback-message" role="status" aria-live="polite">
-            {feedback === 'wrong' && (assist ? `一起点一点击 ${current.item.letter}` : '没关系，再试一次！')}
+            {feedback === 'wrong' && (assist ? `一起点击 ${current.item.letter}` : '没关系，再试一次！')}
             {!feedback && assist && `看，${current.item.letter} 在闪闪发光！`}
+            {!feedback && !assist && '可以点选，也可以按键盘上的字母键'}
           </div>
         </section>
 
@@ -415,7 +462,7 @@ export default function Home() {
           <div className="reward-overlay" role="status" aria-live="assertive">
             <div className="reward-card" style={{ borderColor: current.item.color }}>
               <div className="reward-stars" aria-hidden="true">★ ✦ ★</div>
-              <div className="reward-emoji" aria-hidden="true">{current.item.emoji}</div>
+              <ThingPicture item={current.item} className="reward-picture" />
               <div className="reward-word">
                 <strong>{current.item.letter}</strong>
                 <span>{current.item.word}</span>
@@ -470,7 +517,7 @@ export default function Home() {
         <section className="parent-panel settings-panel">
           <div>
             <h2>声音</h2>
-            <p>当前使用设备本地的童声风格语音，不录音、不上传声音。</p>
+            <p>只使用设备已经安装的本地语音，不录音、不联网生成，也不上传声音。</p>
           </div>
           <label className="volume-control">
             <span aria-hidden="true">🔈</span>
@@ -506,7 +553,7 @@ export default function Home() {
                     <p>{stats?.attempts ?? 0} 次练习 · {accuracy === null ? '尚无正确率' : `${accuracy}% 首次正确`}</p>
                     {stats?.lastPlayed && <small>最近：{new Date(stats.lastPlayed).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</small>}
                   </div>
-                  <span className="stat-emoji" aria-hidden="true">{item.emoji}</span>
+                  <ThingPicture item={item} className="stat-picture" />
                 </article>
               );
             })}
@@ -516,7 +563,7 @@ export default function Home() {
         <section className="parent-panel privacy-panel">
           <div>
             <h2>隐私与记录</h2>
-            <p>没有账号、广告或追踪。不使用麦克风、摄像头和位置。清除后无法恢复。</p>
+            <p>无需登录，没有服务器数据库、广告或追踪。不使用麦克风、摄像头和位置。所有统计只在本机，清除后无法恢复。</p>
           </div>
           {!confirmReset ? (
             <button className="danger-soft-button" type="button" onClick={() => setConfirmReset(true)}>清除学习记录</button>
@@ -541,7 +588,7 @@ export default function Home() {
       <header className="home-header">
         <div className="brand-mark" aria-label="Alphabet and Things">
           <span className="brand-a">A</span>
-          <span className="brand-apple emoji" aria-hidden="true">🍎</span>
+          <ThingPicture item={LETTERS[0]} className="brand-apple" />
         </div>
         <div className="parent-gate-wrap">
           <button
@@ -582,7 +629,7 @@ export default function Home() {
 
           <div className="session-note" aria-label="每轮五题，大约三分钟">
             <span aria-hidden="true">⭐</span>
-            每次 5 题 · 大约 3 分钟
+            每次 5 题 · 无需登录 · 记录只存在本机
           </div>
         </div>
 
@@ -591,7 +638,7 @@ export default function Home() {
           {LETTERS.slice(0, 3).map((item, index) => (
             <div className={`friend friend-${['apple', 'ball', 'cat'][index]}`} key={item.letter}>
               <span className="friend-letter">{item.letter}</span>
-              <span className="friend-thing emoji" aria-hidden="true">{item.emoji}</span>
+              <ThingPicture item={item} className="friend-thing" />
             </div>
           ))}
           <div className="ground" aria-hidden="true">

@@ -1,10 +1,11 @@
-const CACHE_NAME = 'alphabet-and-things-v1';
+const CACHE_NAME = 'alphabet-and-things-v2';
 const CORE_ASSETS = [
   './',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',
   './og.png',
+  './things/object-atlas-v2.png',
 ];
 
 async function cacheApplicationShell() {

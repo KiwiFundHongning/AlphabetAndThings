@@ -13,7 +13,6 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
-    "@fontsource/noto-color-emoji": "^5.3.1",
     "next": "^16.3.2",
     "react": "19.2.6",
     "react-dom": "19.2.6"
