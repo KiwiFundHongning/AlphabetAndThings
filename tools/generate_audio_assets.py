@@ -1,4 +1,4 @@
-"""Generate local narration clips and an original background-music loop.
+"""Generate Kokoro fallback narration and the original background-music loop.
 
 This is a build-time helper only. The Kokoro model is downloaded to the local
 model cache and is not shipped with the game. The game receives small MP3 files.
@@ -58,7 +58,7 @@ def first_audio(pipeline: KPipeline, text: str, voice: str, speed: float) -> np.
     return np.asarray(audio, dtype=np.float32)
 
 
-def encode_childlike_mp3(source: Path, destination: Path) -> None:
+def encode_mp3(source: Path, destination: Path) -> None:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg is required to encode the local MP3 assets")
@@ -73,7 +73,7 @@ def encode_childlike_mp3(source: Path, destination: Path) -> None:
             "-i",
             str(source),
             "-af",
-            "asetrate=24000*1.09,aresample=24000,atempo=0.917431,loudnorm=I=-17:TP=-2:LRA=6",
+            "loudnorm=I=-16:TP=-2:LRA=6",
             "-codec:a",
             "libmp3lame",
             "-b:a",
@@ -101,18 +101,25 @@ def generate_voice_assets(output_dir: Path) -> None:
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    silence = np.zeros(int(SAMPLE_RATE * 0.22), dtype=np.float32)
+    letter_word_silence = np.zeros(int(SAMPLE_RATE * 0.8), dtype=np.float32)
+    word_chinese_silence = np.zeros(int(SAMPLE_RATE * 0.45), dtype=np.float32)
 
     with tempfile.TemporaryDirectory(prefix="alphabet-voice-") as temp_dir:
         temp_root = Path(temp_dir)
         for letter, word, chinese_word, phoneme in ITEMS:
-            english_text = f"[{letter}](/{phoneme}/). {word}."
-            english_audio = first_audio(english, english_text, ENGLISH_VOICE, 0.92)
+            letter_audio = first_audio(english, f"[{letter}](/{phoneme}/).", ENGLISH_VOICE, 0.96)
+            word_audio = first_audio(english, f"{word}.", ENGLISH_VOICE, 0.96)
             chinese_audio = first_audio(chinese, f"{chinese_word}。", CHINESE_VOICE, 0.94)
-            combined = np.concatenate((english_audio, silence, chinese_audio))
+            combined = np.concatenate((
+                letter_audio,
+                letter_word_silence,
+                word_audio,
+                word_chinese_silence,
+                chinese_audio,
+            ))
             wav_path = temp_root / f"{letter.lower()}.wav"
             sf.write(wav_path, combined, SAMPLE_RATE)
-            encode_childlike_mp3(wav_path, output_dir / f"{letter.lower()}.mp3")
+            encode_mp3(wav_path, output_dir / f"{letter.lower()}.mp3")
             print(f"voice: {letter} {word} {chinese_word}")
 
 

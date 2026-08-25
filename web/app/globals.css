@@ -631,13 +631,47 @@ button:focus-visible {
   text-align: inherit;
 }
 
-.feedback-skip-layer {
+.wrong-feedback-overlay {
   position: fixed;
   z-index: 10;
   inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  padding: 20px;
   border: 0;
-  background: transparent;
+  background: rgba(255, 249, 246, .16);
+  color: #c94d5d;
   cursor: pointer;
+  font: inherit;
+}
+
+.wrong-mark {
+  display: grid;
+  width: clamp(112px, 18vw, 154px);
+  height: clamp(112px, 18vw, 154px);
+  place-items: center;
+  border: 7px solid #f19aa4;
+  border-radius: 50%;
+  background: rgba(255, 247, 247, .97);
+  color: #df5b6b;
+  font-family: Arial, sans-serif;
+  font-size: clamp(88px, 14vw, 122px);
+  font-weight: 700;
+  line-height: .76;
+  box-shadow: 0 13px 30px rgba(133, 61, 71, .16);
+  text-shadow: 0 3px 0 #fff;
+  animation: gentle-cross-shake .5s ease both;
+}
+
+.wrong-overlay-copy {
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.92);
+  font-size: clamp(17px, 2.3vw, 22px);
+  font-weight: 900;
+  box-shadow: 0 6px 18px rgba(89, 65, 70, .1);
 }
 
 .reward-card {
@@ -853,6 +887,14 @@ button:focus-visible {
   0%, 100% { transform: translateX(0); }
   30% { transform: translateX(-8px); }
   70% { transform: translateX(8px); }
+}
+
+@keyframes gentle-cross-shake {
+  0% { opacity: 0; transform: scale(.72); }
+  35% { opacity: 1; transform: scale(1.04) rotate(-4deg); }
+  55% { transform: scale(1) rotate(4deg); }
+  74% { transform: rotate(-2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
 }
 
 @keyframes helpful-glow {

@@ -118,6 +118,15 @@ function readProgress(): Progress {
   }
 }
 
+function writeProgress(progress: Progress): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+  } catch {
+    // Some browsers restrict storage for local files. The game still works;
+    // only progress persistence is unavailable in that browser mode.
+  }
+}
+
 function buildQuestions(progress: Progress): Question[] {
   return shuffle(LETTERS).slice(0, QUESTION_COUNT).map((item) => {
     const stats = progress.letters[item.letter];
@@ -183,7 +192,7 @@ export default function Home() {
     setProgress((previous) => {
       const next = update(previous);
       progressRef.current = next;
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      writeProgress(next);
       return next;
     });
   }, []);
@@ -265,7 +274,8 @@ export default function Home() {
 
     const context = new AudioContextClass();
     const gain = context.createGain();
-    gain.gain.setValueAtTime(progressRef.current.volume * 0.12, context.currentTime);
+    const toneVolume = kind === 'wrong' ? 0.18 : 0.12;
+    gain.gain.setValueAtTime(progressRef.current.volume * toneVolume, context.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.55);
     gain.connect(context.destination);
 
@@ -406,7 +416,7 @@ export default function Home() {
     setFeedback('wrong');
     playTone('wrong');
 
-    actionTimer.current = setTimeout(dismissWrongFeedback, 720);
+    actionTimer.current = setTimeout(dismissWrongFeedback, 900);
   }, [assist, current, dismissWrongFeedback, finishCorrectFeedback, locked, playPronunciation, playTone, saveProgress, startMusic, wrongCount]);
 
   useEffect(() => {
@@ -475,7 +485,7 @@ export default function Home() {
     };
     progressRef.current = reset;
     setProgress(reset);
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reset));
+    writeProgress(reset);
     setConfirmReset(false);
   };
 
@@ -539,7 +549,10 @@ export default function Home() {
         </section>
 
         {feedback === 'wrong' && (
-          <button className="feedback-skip-layer" type="button" onClick={skipFeedback} aria-label="跳过错误动画，继续作答" />
+          <button className="wrong-feedback-overlay" type="button" onClick={skipFeedback} aria-label="答错了，点击继续作答">
+            <span className="wrong-mark" aria-hidden="true">×</span>
+            <span className="wrong-overlay-copy">没关系，再试一次</span>
+          </button>
         )}
 
         {feedback === 'correct' && (
