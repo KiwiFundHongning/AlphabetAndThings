@@ -1,0 +1,26 @@
+{
+  "name": "AlphabetAndThings - 字母和好朋友",
+  "short_name": "AlphabetAndThings",
+  "description": "面向三岁儿童的中英双语字母与常见事物认知小游戏。",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fff9e9",
+  "theme_color": "#356fe5",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+@font-face {
+  font-family: 'Noto Color Emoji';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('./fonts/noto-color-emoji-3-400-normal.woff2') format('woff2');
+  unicode-range: U+2602, U+FE0F, U+1F3A9;
+}
+
+@font-face {
+  font-family: 'Noto Color Emoji';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('./fonts/noto-color-emoji-4-400-normal.woff2') format('woff2');
+  unicode-range: U+26BD, U+FE0F, U+1FA81;
+}
+
+@font-face {
+  font-family: 'Noto Color Emoji';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('./fonts/noto-color-emoji-5-400-normal.woff2') format('woff2');
+  unicode-range: U+1F682;
+}
+
+@font-face {
+  font-family: 'Noto Color Emoji';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('./fonts/noto-color-emoji-6-400-normal.woff2') format('woff2');
+  unicode-range: U+1F347, U+1F34A, U+1F34E, U+1F366, U+1F95A, U+1F9C3;
+}
+
+@font-face {
+  font-family: 'Noto Color Emoji';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('./fonts/noto-color-emoji-7-400-normal.woff2') format('woff2');
+  unicode-range: U+2600, U+FE0F, U+1F319, U+1F40B, U+1F41F, U+1F430-1F431, U+1F436, U+1F43C, U+1F981, U+1F993;
+}
+
+@font-face {
+  font-family: 'Noto Color Emoji';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('./fonts/noto-color-emoji-9-400-normal.woff2') format('woff2');
+  unicode-range: U+1F443;
+}
