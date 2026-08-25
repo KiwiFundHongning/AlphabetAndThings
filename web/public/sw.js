@@ -1,4 +1,4 @@
-const CACHE_NAME = 'alphabet-and-things-v2';
+const CACHE_NAME = 'alphabet-and-things-v3';
 const CORE_ASSETS = [
   './',
   './manifest.webmanifest',
@@ -6,6 +6,29 @@ const CORE_ASSETS = [
   './icon-512.png',
   './og.png',
   './things/object-atlas-v2.png',
+  './audio/music/gentle-ocean-play.mp3',
+  './audio/voice/a.mp3',
+  './audio/voice/b.mp3',
+  './audio/voice/c.mp3',
+  './audio/voice/d.mp3',
+  './audio/voice/e.mp3',
+  './audio/voice/f.mp3',
+  './audio/voice/g.mp3',
+  './audio/voice/h.mp3',
+  './audio/voice/i.mp3',
+  './audio/voice/j.mp3',
+  './audio/voice/k.mp3',
+  './audio/voice/l.mp3',
+  './audio/voice/m.mp3',
+  './audio/voice/n.mp3',
+  './audio/voice/o.mp3',
+  './audio/voice/p.mp3',
+  './audio/voice/r.mp3',
+  './audio/voice/s.mp3',
+  './audio/voice/t.mp3',
+  './audio/voice/u.mp3',
+  './audio/voice/w.mp3',
+  './audio/voice/z.mp3',
 ];
 
 async function cacheApplicationShell() {

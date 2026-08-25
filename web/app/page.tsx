@@ -22,6 +22,7 @@ type Progress = {
   totalSeconds: number;
   sessions: number;
   volume: number;
+  musicVolume: number;
 };
 
 type Question = {
@@ -87,6 +88,7 @@ const emptyProgress = (): Progress => ({
   totalSeconds: 0,
   sessions: 0,
   volume: 0.85,
+  musicVolume: 0.12,
 });
 
 function shuffle<T>(items: T[]): T[] {
@@ -107,6 +109,9 @@ function readProgress(): Progress {
       totalSeconds: Number.isFinite(stored.totalSeconds) ? stored.totalSeconds ?? 0 : 0,
       sessions: Number.isFinite(stored.sessions) ? stored.sessions ?? 0 : 0,
       volume: typeof stored.volume === 'number' ? Math.min(1, Math.max(0, stored.volume)) : 0.85,
+      musicVolume: typeof stored.musicVolume === 'number'
+        ? Math.min(0.35, Math.max(0, stored.musicVolume))
+        : 0.12,
     };
   } catch {
     return emptyProgress();
@@ -148,6 +153,8 @@ export default function Home() {
   const sessionStartedAt = useRef(0);
   const gateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const actionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const narrationRef = useRef<HTMLAudioElement | null>(null);
+  const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
 
   const current = questions[questionIndex];
 
@@ -167,7 +174,8 @@ export default function Home() {
   useEffect(() => () => {
     if (gateTimer.current) clearTimeout(gateTimer.current);
     if (actionTimer.current) clearTimeout(actionTimer.current);
-    window.speechSynthesis?.cancel();
+    narrationRef.current?.pause();
+    backgroundMusicRef.current?.pause();
   }, []);
 
   const saveProgress = useCallback((update: (previous: Progress) => Progress) => {
@@ -179,32 +187,52 @@ export default function Home() {
     });
   }, []);
 
-  const speakParts = useCallback((parts: Array<{ text: string; lang: 'zh-CN' | 'en-US' }>) => {
-    if (!('speechSynthesis' in window) || progressRef.current.volume <= 0) return;
-    window.speechSynthesis.cancel();
-    const voices = window.speechSynthesis.getVoices().filter((voice) => voice.localService);
-    if (!voices.length) return;
-
-    parts.forEach(({ text, lang }) => {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = lang;
-      utterance.rate = lang === 'zh-CN' ? 0.78 : 0.74;
-      utterance.pitch = 1.28;
-      utterance.volume = progressRef.current.volume;
-      utterance.voice = voices.find((voice) => (
-        voice.lang.toLowerCase().startsWith(lang.slice(0, 2).toLowerCase())
-      )) ?? voices[0];
-      window.speechSynthesis.speak(utterance);
-    });
+  const applyMusicVolume = useCallback((ducked = false) => {
+    if (!backgroundMusicRef.current) return;
+    const target = progressRef.current.musicVolume * (ducked ? 0.18 : 1);
+    backgroundMusicRef.current.volume = Math.min(1, Math.max(0, target));
   }, []);
 
-  const speakPrompt = useCallback((item: LetterItem) => {
-    speakParts([
-      { text: '请找到', lang: 'zh-CN' },
-      { text: item.letter, lang: 'en-US' },
-      { text: `Find ${item.letter}`, lang: 'en-US' },
-    ]);
-  }, [speakParts]);
+  const stopMusic = useCallback(() => {
+    if (!backgroundMusicRef.current) return;
+    backgroundMusicRef.current.pause();
+    backgroundMusicRef.current.currentTime = 0;
+  }, []);
+
+  const startMusic = useCallback(() => {
+    let music = backgroundMusicRef.current;
+    if (!music) {
+      music = new Audio(new URL('audio/music/gentle-ocean-play.mp3', document.baseURI).toString());
+      music.loop = true;
+      music.preload = 'auto';
+      backgroundMusicRef.current = music;
+    }
+    applyMusicVolume(false);
+    music.play().catch(() => undefined);
+  }, [applyMusicVolume]);
+
+  const playPronunciation = useCallback((item: LetterItem) => {
+    narrationRef.current?.pause();
+    narrationRef.current = null;
+    applyMusicVolume(false);
+    if (progressRef.current.volume <= 0) return;
+
+    const narration = new Audio(
+      new URL(`audio/voice/${item.letter.toLowerCase()}.mp3`, document.baseURI).toString(),
+    );
+    narration.preload = 'auto';
+    narration.volume = progressRef.current.volume;
+    narrationRef.current = narration;
+    applyMusicVolume(true);
+
+    const restoreMusic = () => {
+      if (narrationRef.current === narration) narrationRef.current = null;
+      applyMusicVolume(false);
+    };
+    narration.addEventListener('ended', restoreMusic, { once: true });
+    narration.addEventListener('error', restoreMusic, { once: true });
+    narration.play().catch(restoreMusic);
+  }, [applyMusicVolume]);
 
   const playTone = useCallback((kind: 'correct' | 'wrong') => {
     if (progressRef.current.volume <= 0) return;
@@ -234,13 +262,14 @@ export default function Home() {
 
   useEffect(() => {
     if (screen !== 'playing' || !current || feedback) return;
-    const timer = window.setTimeout(() => speakPrompt(current.item), 220);
+    const timer = window.setTimeout(() => playPronunciation(current.item), 220);
     return () => window.clearTimeout(timer);
-  }, [current, feedback, screen, speakPrompt]);
+  }, [current, feedback, playPronunciation, screen]);
 
   const startGame = () => {
     if (actionTimer.current) clearTimeout(actionTimer.current);
-    window.speechSynthesis?.cancel();
+    narrationRef.current?.pause();
+    startMusic();
     setQuestions(buildQuestions(progressRef.current));
     setQuestionIndex(0);
     setWrongCount(0);
@@ -267,7 +296,8 @@ export default function Home() {
   const goHome = () => {
     if (screen === 'playing') addElapsedTime(false);
     if (actionTimer.current) clearTimeout(actionTimer.current);
-    window.speechSynthesis?.cancel();
+    narrationRef.current?.pause();
+    stopMusic();
     setFeedback(null);
     setScreen('home');
   };
@@ -283,10 +313,7 @@ export default function Home() {
       if (firstTry) setSessionFirstTries((score) => score + 1);
       setFeedback('correct');
       playTone('correct');
-      speakParts([
-        { text: `${current.item.letter}. ${current.item.word}.`, lang: 'en-US' },
-        { text: current.item.chinese, lang: 'zh-CN' },
-      ]);
+      playPronunciation(current.item);
 
       saveProgress((previous) => {
         const previousStats = previous.letters[current.item.letter] ?? {
@@ -310,6 +337,7 @@ export default function Home() {
       actionTimer.current = setTimeout(() => {
         if (questionIndex >= questions.length - 1) {
           addElapsedTime(true);
+          stopMusic();
           setScreen('complete');
         } else {
           setQuestionIndex((index) => index + 1);
@@ -319,7 +347,7 @@ export default function Home() {
           setFeedback(null);
           setSelectedLetter(null);
         }
-      }, 1550);
+      }, 4200);
       return;
     }
 
@@ -328,22 +356,13 @@ export default function Home() {
     setAssist(nextWrongCount >= 2);
     setFeedback('wrong');
     playTone('wrong');
-    speakParts(nextWrongCount >= 2
-      ? [
-          { text: '我们一起找', lang: 'zh-CN' },
-          { text: current.item.letter, lang: 'en-US' },
-        ]
-      : [
-          { text: '再试一次', lang: 'zh-CN' },
-          { text: 'Try again', lang: 'en-US' },
-        ]);
 
     actionTimer.current = setTimeout(() => {
       setLocked(false);
       setFeedback(null);
       setSelectedLetter(null);
     }, 720);
-  }, [addElapsedTime, assist, current, locked, playTone, questionIndex, questions.length, saveProgress, speakParts, wrongCount]);
+  }, [addElapsedTime, assist, current, locked, playPronunciation, playTone, questionIndex, questions.length, saveProgress, stopMusic, wrongCount]);
 
   useEffect(() => {
     if (screen !== 'playing' || !current) return;
@@ -388,10 +407,20 @@ export default function Home() {
 
   const updateVolume = (volume: number) => {
     saveProgress((previous) => ({ ...previous, volume }));
+    if (narrationRef.current) narrationRef.current.volume = volume;
+  };
+
+  const updateMusicVolume = (musicVolume: number) => {
+    saveProgress((previous) => ({ ...previous, musicVolume }));
+    if (backgroundMusicRef.current) backgroundMusicRef.current.volume = musicVolume;
   };
 
   const resetProgress = () => {
-    const reset = { ...emptyProgress(), volume: progress.volume };
+    const reset = {
+      ...emptyProgress(),
+      volume: progress.volume,
+      musicVolume: progress.musicVolume,
+    };
     progressRef.current = reset;
     setProgress(reset);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reset));
@@ -408,19 +437,16 @@ export default function Home() {
               <span className={index <= questionIndex ? 'progress-dot active' : 'progress-dot'} key={`${question.item.letter}-${index}`} />
             ))}
           </div>
-          <button className="round-icon-button speaker-button" type="button" onClick={() => speakPrompt(current.item)} aria-label="再听一次">🔊</button>
+          <button className="round-icon-button speaker-button" type="button" onClick={() => playPronunciation(current.item)} aria-label="再听字母和物品读音">🔊</button>
         </header>
 
         <section className="question-area">
-          <div className="prompt-card">
-            <ThingPicture item={current.item} className="prompt-thing" />
-            <div className="prompt-copy">
-              <p>请找到</p>
-              <div className="prompt-letter-line">
-                <strong style={{ background: current.item.color }}>{current.item.letter}</strong>
-                <span>Find {current.item.letter}</span>
-              </div>
-              <small>{current.item.word} · {current.item.chinese}</small>
+          <div className="learning-focus">
+            <ThingPicture item={current.item} className="focus-picture" />
+            <div className="focus-caption">
+              <strong style={{ background: current.item.color }}>{current.item.letter}</strong>
+              <span>{current.item.word}</span>
+              <small>{current.item.chinese}</small>
             </div>
           </div>
 
@@ -517,21 +543,38 @@ export default function Home() {
         <section className="parent-panel settings-panel">
           <div>
             <h2>声音</h2>
-            <p>只使用设备已经安装的本地语音，不录音、不联网生成，也不上传声音。</p>
+            <p>字母与物品使用随游戏保存的儿童风格预生成读音；背景音乐会在读音播放时自动变轻。</p>
           </div>
-          <label className="volume-control">
-            <span aria-hidden="true">🔈</span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={progress.volume}
-              onChange={(event) => updateVolume(Number(event.target.value))}
-              aria-label="语音音量"
-            />
-            <span aria-hidden="true">🔊</span>
-          </label>
+          <div className="sound-control-stack">
+            <label className="volume-control">
+              <strong>读音</strong>
+              <span aria-hidden="true">🔈</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={progress.volume}
+                onChange={(event) => updateVolume(Number(event.target.value))}
+                aria-label="读音音量"
+              />
+              <span aria-hidden="true">🔊</span>
+            </label>
+            <label className="volume-control">
+              <strong>音乐</strong>
+              <span aria-hidden="true">♪</span>
+              <input
+                type="range"
+                min="0"
+                max="0.35"
+                step="0.01"
+                value={progress.musicVolume}
+                onChange={(event) => updateMusicVolume(Number(event.target.value))}
+                aria-label="背景音乐音量"
+              />
+              <span aria-hidden="true">♫</span>
+            </label>
+          </div>
         </section>
 
         <section className="parent-panel">
