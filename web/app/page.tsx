@@ -1,94 +1,72 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  ALLOWED_LETTERS,
+  BUILTIN_ITEMS,
+  CORE_ITEMS,
+  DIFFICULTIES,
+  EXTENSION_CATALOG,
+  activateExtension,
+  findExtension,
+  type Difficulty,
+  type ExtensionCatalogItem,
+  type GameItem,
+} from './game-data';
 
-type LetterItem = {
-  letter: string;
-  word: string;
-  chinese: string;
-  atlasColumn: number;
-  atlasRow: number;
-  color: string;
-};
-
-type LetterStats = {
-  attempts: number;
-  firstCorrect: number;
-  lastPlayed: string | null;
-};
-
+type LetterStats = { attempts: number; firstCorrect: number; lastPlayed: string | null };
 type Progress = {
   letters: Record<string, LetterStats>;
   totalSeconds: number;
   sessions: number;
   volume: number;
   musicVolume: number;
+  difficulty: Difficulty;
+  hardFailureLimit: number;
+  recentItems: string[];
+  customImages: Record<string, string>;
 };
+type Question = { item: GameItem; choices: string[] };
+type Screen = 'home' | 'playing' | 'complete' | 'failed' | 'parent';
+type Feedback = 'correct' | 'wrong' | 'questionFailed' | null;
+type ExtensionStatus = { tone: 'info' | 'success' | 'error'; message: string } | null;
 
-type Question = {
-  item: LetterItem;
-  choices: string[];
-};
-
-type Screen = 'home' | 'playing' | 'complete' | 'parent';
-type Feedback = 'correct' | 'wrong' | null;
-
-const LETTERS: LetterItem[] = [
-  { letter: 'A', word: 'Apple', chinese: '苹果', atlasColumn: 0, atlasRow: 0, color: '#ef6475' },
-  { letter: 'B', word: 'Ball', chinese: '球', atlasColumn: 1, atlasRow: 0, color: '#f2b84b' },
-  { letter: 'C', word: 'Cat', chinese: '猫', atlasColumn: 2, atlasRow: 0, color: '#678ee7' },
-  { letter: 'D', word: 'Dog', chinese: '狗', atlasColumn: 3, atlasRow: 0, color: '#9a77db' },
-  { letter: 'E', word: 'Egg', chinese: '鸡蛋', atlasColumn: 4, atlasRow: 0, color: '#55bca8' },
-  { letter: 'F', word: 'Fish', chinese: '鱼', atlasColumn: 5, atlasRow: 0, color: '#4ba6df' },
-  { letter: 'G', word: 'Grapes', chinese: '葡萄', atlasColumn: 0, atlasRow: 1, color: '#9872d7' },
-  { letter: 'H', word: 'Hat', chinese: '帽子', atlasColumn: 1, atlasRow: 1, color: '#ee7b5a' },
-  { letter: 'I', word: 'Ice cream', chinese: '冰淇淋', atlasColumn: 2, atlasRow: 1, color: '#e98dba' },
-  { letter: 'J', word: 'Juice', chinese: '果汁', atlasColumn: 3, atlasRow: 1, color: '#f29b3f' },
-  { letter: 'K', word: 'Kite', chinese: '风筝', atlasColumn: 4, atlasRow: 1, color: '#5e9de1' },
-  { letter: 'L', word: 'Lion', chinese: '狮子', atlasColumn: 5, atlasRow: 1, color: '#e9a83d' },
-  { letter: 'M', word: 'Moon', chinese: '月亮', atlasColumn: 0, atlasRow: 2, color: '#697bd9' },
-  { letter: 'N', word: 'Nose', chinese: '鼻子', atlasColumn: 1, atlasRow: 2, color: '#df7f7d' },
-  { letter: 'O', word: 'Orange', chinese: '橙子', atlasColumn: 2, atlasRow: 2, color: '#ee913e' },
-  { letter: 'P', word: 'Panda', chinese: '熊猫', atlasColumn: 3, atlasRow: 2, color: '#5e7a8b' },
-  { letter: 'R', word: 'Rabbit', chinese: '兔子', atlasColumn: 4, atlasRow: 2, color: '#d880b8' },
-  { letter: 'S', word: 'Sun', chinese: '太阳', atlasColumn: 5, atlasRow: 2, color: '#efbb39' },
-  { letter: 'T', word: 'Train', chinese: '火车', atlasColumn: 0, atlasRow: 3, color: '#e05f61' },
-  { letter: 'U', word: 'Umbrella', chinese: '雨伞', atlasColumn: 1, atlasRow: 3, color: '#5baecf' },
-  { letter: 'W', word: 'Whale', chinese: '鲸鱼', atlasColumn: 2, atlasRow: 3, color: '#4e94d7' },
-  { letter: 'Z', word: 'Zebra', chinese: '斑马', atlasColumn: 3, atlasRow: 3, color: '#657681' },
-];
-
-const STORAGE_KEY = 'alphabet-and-things-progress-v1';
+const STORAGE_KEY = 'alphabet-and-things-progress-v2';
+const LEGACY_STORAGE_KEY = 'alphabet-and-things-progress-v1';
 const QUESTION_COUNT = 5;
+const HARD_WRONG_LIMIT = 2;
+const MAX_UPLOAD_BYTES = 6_000_000;
 
-type AtlasStyle = CSSProperties & {
-  '--atlas-x': string;
-  '--atlas-y': string;
-};
+type PictureStyle = CSSProperties & { '--atlas-x'?: string; '--atlas-y'?: string };
 
-function ThingPicture({ item, className = '' }: { item: LetterItem; className?: string }) {
-  const style: AtlasStyle = {
-    backgroundImage: "url('things/object-atlas-v2.png')",
-    '--atlas-x': `${item.atlasColumn * 20}%`,
-    '--atlas-y': `${item.atlasRow * (100 / 3)}%`,
-  };
+function ThingPicture({ item, className = '' }: { item: GameItem; className?: string }) {
+  let style: PictureStyle;
+  if (item.image.kind === 'direct') {
+    style = {
+      backgroundImage: `url(${JSON.stringify(item.image.src)})`,
+      backgroundSize: 'contain',
+      backgroundPosition: 'center',
+    };
+  } else {
+    // A slight safe crop keeps decorative pixels at neighbouring 6×6 cell
+    // edges out of the game card while retaining the exact sprite centre.
+    const zoom = item.image.rows === 6 ? 1.16 : 1;
+    const atlasX = (((item.image.column + 0.5) * zoom - 0.5) / (item.image.columns * zoom - 1)) * 100;
+    const atlasY = (((item.image.row + 0.5) * zoom - 0.5) / (item.image.rows * zoom - 1)) * 100;
+    style = {
+      backgroundImage: `url(${JSON.stringify(item.image.src)})`,
+      backgroundSize: `${item.image.columns * zoom * 100}% ${item.image.rows * zoom * 100}%`,
+      '--atlas-x': `${atlasX}%`,
+      '--atlas-y': `${atlasY}%`,
+    };
+  }
 
-  return (
-    <span
-      className={`thing-picture ${className}`.trim()}
-      style={style}
-      role="img"
-      aria-label={`${item.word}，${item.chinese}`}
-    />
-  );
+  return <span className={`thing-picture ${className}`.trim()} style={style} role="img" aria-label={`${item.word}，${item.chinese}`} />;
 }
 
 const emptyProgress = (): Progress => ({
-  letters: {},
-  totalSeconds: 0,
-  sessions: 0,
-  volume: 0.85,
-  musicVolume: 0.2,
+  letters: {}, totalSeconds: 0, sessions: 0, volume: 0.85, musicVolume: 0.2,
+  difficulty: 'beginner', hardFailureLimit: 3, recentItems: [], customImages: {},
 });
 
 function shuffle<T>(items: T[]): T[] {
@@ -100,18 +78,32 @@ function shuffle<T>(items: T[]): T[] {
   return result;
 }
 
+function clampInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(maximum, Math.max(minimum, Math.round(value)))
+    : fallback;
+}
+
 function readProgress(): Progress {
   if (typeof window === 'undefined') return emptyProgress();
   try {
-    const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}') as Partial<Progress>;
+    const raw = window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY) ?? '{}';
+    const stored = JSON.parse(raw) as Partial<Progress>;
+    const difficulty = DIFFICULTIES.some((item) => item.id === stored.difficulty)
+      ? stored.difficulty as Difficulty
+      : 'beginner';
     return {
       letters: stored.letters ?? {},
-      totalSeconds: Number.isFinite(stored.totalSeconds) ? stored.totalSeconds ?? 0 : 0,
-      sessions: Number.isFinite(stored.sessions) ? stored.sessions ?? 0 : 0,
+      totalSeconds: clampInteger(stored.totalSeconds, 0, 0, Number.MAX_SAFE_INTEGER),
+      sessions: clampInteger(stored.sessions, 0, 0, Number.MAX_SAFE_INTEGER),
       volume: typeof stored.volume === 'number' ? Math.min(1, Math.max(0, stored.volume)) : 0.85,
-      musicVolume: typeof stored.musicVolume === 'number'
-        ? Math.min(0.4, Math.max(0, stored.musicVolume === 0.12 ? 0.2 : stored.musicVolume))
-        : 0.2,
+      musicVolume: typeof stored.musicVolume === 'number' ? Math.min(0.4, Math.max(0, stored.musicVolume)) : 0.2,
+      difficulty,
+      hardFailureLimit: clampInteger(stored.hardFailureLimit, 3, 1, 5),
+      recentItems: Array.isArray(stored.recentItems)
+        ? stored.recentItems.filter((item): item is string => typeof item === 'string').slice(-16)
+        : [],
+      customImages: stored.customImages && typeof stored.customImages === 'object' ? stored.customImages : {},
     };
   } catch {
     return emptyProgress();
@@ -121,28 +113,63 @@ function readProgress(): Progress {
 function writeProgress(progress: Progress): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
   } catch {
-    // Some browsers restrict storage for local files. The game still works;
-    // only progress persistence is unavailable in that browser mode.
+    // A restrictive local-file browser mode may disable persistence; play still works.
   }
 }
 
-function buildQuestions(progress: Progress): Question[] {
-  return shuffle(LETTERS).slice(0, QUESTION_COUNT).map((item) => {
-    const stats = progress.letters[item.letter];
+function buildQuestions(progress: Progress, items: GameItem[]): Question[] {
+  const grouped = new Map<string, GameItem[]>();
+  items.forEach((item) => grouped.set(item.letter, [...(grouped.get(item.letter) ?? []), item]));
+  return shuffle([...grouped.keys()]).slice(0, QUESTION_COUNT).map((letter) => {
+    const candidates = grouped.get(letter) ?? [];
+    const fresh = candidates.filter((item) => !progress.recentItems.includes(item.id));
+    const item = shuffle(fresh.length ? fresh : candidates)[0];
+    const stats = progress.letters[letter];
     const accuracy = stats?.attempts ? stats.firstCorrect / stats.attempts : 0;
-    const choiceCount = stats?.attempts >= 3 && accuracy >= 0.8 ? 3 : 2;
-    const distractors = shuffle(LETTERS.filter((candidate) => candidate.letter !== item.letter))
-      .slice(0, choiceCount - 1)
-      .map((candidate) => candidate.letter);
-    return { item, choices: shuffle([item.letter, ...distractors]) };
+    const choiceCount = progress.difficulty === 'medium' || progress.difficulty === 'hard'
+      ? 3
+      : stats?.attempts >= 3 && accuracy >= 0.8 ? 3 : 2;
+    const distractors = shuffle(ALLOWED_LETTERS.filter((candidate) => candidate !== letter)).slice(0, choiceCount - 1);
+    return { item, choices: shuffle([letter, ...distractors]) };
   });
 }
 
 function formatDuration(totalSeconds: number): string {
-  if (totalSeconds < 60) return `${totalSeconds} 秒`;
-  const minutes = Math.floor(totalSeconds / 60);
-  return `${minutes} 分钟`;
+  return totalSeconds < 60 ? `${totalSeconds} 秒` : `${Math.floor(totalSeconds / 60)} 分钟`;
+}
+
+async function loadImageFile(file: File): Promise<string> {
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) throw new Error('请选择 PNG、JPG 或 WebP 图片');
+  if (file.size > MAX_UPLOAD_BYTES) throw new Error('图片不能超过 6 MB');
+
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const candidate = new Image();
+      candidate.onload = () => resolve(candidate);
+      candidate.onerror = () => reject(new Error('图片无法打开'));
+      candidate.src = sourceUrl;
+    });
+    if (image.naturalWidth < 120 || image.naturalHeight < 120) throw new Error('图片太小，请选择至少 120×120 的图片');
+    if (image.naturalWidth > 8000 || image.naturalHeight > 8000) throw new Error('图片尺寸过大');
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('浏览器无法处理图片');
+    context.fillStyle = '#fffaf0';
+    context.fillRect(0, 0, 512, 512);
+    const scale = Math.min(464 / image.naturalWidth, 464 / image.naturalHeight);
+    const width = image.naturalWidth * scale;
+    const height = image.naturalHeight * scale;
+    context.drawImage(image, (512 - width) / 2, (512 - height) / 2, width, height);
+    return canvas.toDataURL('image/webp', 0.84);
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
 }
 
 export default function Home() {
@@ -151,6 +178,7 @@ export default function Home() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [wrongCount, setWrongCount] = useState(0);
+  const [failedQuestions, setFailedQuestions] = useState(0);
   const [assist, setAssist] = useState(false);
   const [locked, setLocked] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -158,25 +186,32 @@ export default function Home() {
   const [sessionFirstTries, setSessionFirstTries] = useState(0);
   const [gateMessage, setGateMessage] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
+  const [extensionInput, setExtensionInput] = useState('');
+  const [extensionStatus, setExtensionStatus] = useState<ExtensionStatus>(null);
+  const [recognizedExtension, setRecognizedExtension] = useState<ExtensionCatalogItem | null>(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [pendingExtension, setPendingExtension] = useState<{ entry: ExtensionCatalogItem; imageDataUrl: string } | null>(null);
+
   const progressRef = useRef<Progress>(progress);
   const sessionStartedAt = useRef(0);
   const gateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const actionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingFailureCountRef = useRef(0);
   const narrationRef = useRef<HTMLAudioElement | null>(null);
   const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
   const voiceCacheRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
+  const customItems = useMemo(() => EXTENSION_CATALOG.flatMap((entry) => {
+    const imageDataUrl = progress.customImages[entry.id];
+    return imageDataUrl ? [activateExtension(entry, imageDataUrl)] : [];
+  }), [progress.customImages]);
+  const availableItems = useMemo(() => [...BUILTIN_ITEMS, ...customItems], [customItems]);
   const current = questions[questionIndex];
+  const activeDifficulty = DIFFICULTIES.find((item) => item.id === progress.difficulty) ?? DIFFICULTIES[0];
 
   useEffect(() => {
-    if (
-      'serviceWorker' in navigator &&
-      window.location.protocol.startsWith('http') &&
-      !['localhost', '127.0.0.1'].includes(window.location.hostname)
-    ) {
-      const pageBase = window.location.pathname.endsWith('/')
-        ? window.location.href
-        : new URL('.', window.location.href).href;
+    if ('serviceWorker' in navigator && window.location.protocol.startsWith('http') && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+      const pageBase = window.location.pathname.endsWith('/') ? window.location.href : new URL('.', window.location.href).href;
       navigator.serviceWorker.register(new URL('sw.js', pageBase).toString()).catch(() => undefined);
     }
   }, []);
@@ -198,9 +233,7 @@ export default function Home() {
   }, []);
 
   const applyMusicVolume = useCallback((ducked = false) => {
-    if (!backgroundMusicRef.current) return;
-    const target = progressRef.current.musicVolume * (ducked ? 0.18 : 1);
-    backgroundMusicRef.current.volume = Math.min(1, Math.max(0, target));
+    if (backgroundMusicRef.current) backgroundMusicRef.current.volume = Math.min(1, Math.max(0, progressRef.current.musicVolume * (ducked ? 0.18 : 1)));
   }, []);
 
   const stopMusic = useCallback(() => {
@@ -210,14 +243,13 @@ export default function Home() {
   }, []);
 
   const getBackgroundMusic = useCallback(() => {
-    let music = backgroundMusicRef.current;
-    if (!music) {
-      music = new Audio(new URL('audio/music/gentle-ocean-play.mp3', document.baseURI).toString());
+    if (!backgroundMusicRef.current) {
+      const music = new Audio(new URL('audio/music/gentle-ocean-play.mp3', document.baseURI).toString());
       music.loop = true;
       music.preload = 'auto';
       backgroundMusicRef.current = music;
     }
-    return music;
+    return backgroundMusicRef.current;
   }, []);
 
   const startMusic = useCallback(() => {
@@ -227,31 +259,26 @@ export default function Home() {
     music.play().catch(() => undefined);
   }, [applyMusicVolume, getBackgroundMusic]);
 
-  const getPronunciation = useCallback((item: LetterItem) => {
-    let narration = voiceCacheRef.current.get(item.letter);
-    if (!narration) {
-      narration = new Audio(
-        new URL(`audio/voice/${item.letter.toLowerCase()}.mp3`, document.baseURI).toString(),
-      );
+  const getPronunciation = useCallback((item: GameItem) => {
+    if (!voiceCacheRef.current.has(item.id)) {
+      const narration = new Audio(new URL(item.audio, document.baseURI).toString());
       narration.preload = 'auto';
-      voiceCacheRef.current.set(item.letter, narration);
+      voiceCacheRef.current.set(item.id, narration);
     }
-    return narration;
+    return voiceCacheRef.current.get(item.id)!;
   }, []);
 
-  const playPronunciation = useCallback((item: LetterItem) => {
+  const playPronunciation = useCallback((item: GameItem) => {
     narrationRef.current?.pause();
     if (narrationRef.current) narrationRef.current.currentTime = 0;
     narrationRef.current = null;
     applyMusicVolume(false);
     if (progressRef.current.volume <= 0) return;
-
     const narration = getPronunciation(item);
     narration.currentTime = 0;
     narration.volume = progressRef.current.volume;
     narrationRef.current = narration;
     applyMusicVolume(true);
-
     const restoreMusic = () => {
       if (narrationRef.current === narration) narrationRef.current = null;
       applyMusicVolume(false);
@@ -261,26 +288,18 @@ export default function Home() {
     narration.play().catch(restoreMusic);
   }, [applyMusicVolume, getPronunciation]);
 
-  useEffect(() => {
-    getBackgroundMusic().load();
-    LETTERS.forEach((item) => getPronunciation(item).load());
-  }, [getBackgroundMusic, getPronunciation]);
+  useEffect(() => { getBackgroundMusic().load(); }, [getBackgroundMusic]);
 
   const playTone = useCallback((kind: 'correct' | 'wrong') => {
     if (progressRef.current.volume <= 0) return;
-    const AudioContextClass = window.AudioContext ??
-      (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const AudioContextClass = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextClass) return;
-
     const context = new AudioContextClass();
     const gain = context.createGain();
-    const toneVolume = kind === 'wrong' ? 0.18 : 0.12;
-    gain.gain.setValueAtTime(progressRef.current.volume * toneVolume, context.currentTime);
+    gain.gain.setValueAtTime(progressRef.current.volume * (kind === 'wrong' ? 0.18 : 0.12), context.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.55);
     gain.connect(context.destination);
-
-    const notes = kind === 'correct' ? [523.25, 659.25, 783.99] : [330, 294];
-    notes.forEach((frequency, index) => {
+    (kind === 'correct' ? [523.25, 659.25, 783.99] : [330, 294]).forEach((frequency, index) => {
       const oscillator = context.createOscillator();
       oscillator.type = kind === 'correct' ? 'sine' : 'triangle';
       oscillator.frequency.value = frequency;
@@ -289,19 +308,37 @@ export default function Home() {
       oscillator.start(startsAt);
       oscillator.stop(startsAt + 0.28);
     });
-
     window.setTimeout(() => context.close().catch(() => undefined), 800);
   }, []);
+
+  const addElapsedTime = useCallback((completed: boolean) => {
+    if (!sessionStartedAt.current) return;
+    const elapsed = Math.max(1, Math.round((Date.now() - sessionStartedAt.current) / 1000));
+    sessionStartedAt.current = 0;
+    saveProgress((previous) => ({ ...previous, totalSeconds: previous.totalSeconds + elapsed, sessions: previous.sessions + (completed ? 1 : 0) }));
+  }, [saveProgress]);
+
+  const prepareQuestion = useCallback((nextIndex: number) => {
+    setQuestionIndex(nextIndex);
+    setWrongCount(0);
+    setAssist(false);
+    setLocked(false);
+    setFeedback(null);
+    setSelectedLetter(null);
+    const next = questions[nextIndex];
+    if (next) playPronunciation(next.item);
+  }, [playPronunciation, questions]);
 
   const startGame = () => {
     if (actionTimer.current) clearTimeout(actionTimer.current);
     narrationRef.current?.pause();
-    const nextQuestions = buildQuestions(progressRef.current);
-    startMusic();
-    playPronunciation(nextQuestions[0].item);
+    const nextQuestions = buildQuestions(progressRef.current, availableItems);
     setQuestions(nextQuestions);
+    saveProgress((previous) => ({ ...previous, recentItems: [...previous.recentItems, ...nextQuestions.map((question) => question.item.id)].slice(-16) }));
     setQuestionIndex(0);
     setWrongCount(0);
+    setFailedQuestions(0);
+    pendingFailureCountRef.current = 0;
     setAssist(false);
     setLocked(false);
     setFeedback(null);
@@ -309,18 +346,9 @@ export default function Home() {
     setSessionFirstTries(0);
     sessionStartedAt.current = Date.now();
     setScreen('playing');
+    startMusic();
+    playPronunciation(nextQuestions[0].item);
   };
-
-  const addElapsedTime = useCallback((completed: boolean) => {
-    if (!sessionStartedAt.current) return;
-    const elapsed = Math.max(1, Math.round((Date.now() - sessionStartedAt.current) / 1000));
-    sessionStartedAt.current = 0;
-    saveProgress((previous) => ({
-      ...previous,
-      totalSeconds: previous.totalSeconds + elapsed,
-      sessions: previous.sessions + (completed ? 1 : 0),
-    }));
-  }, [saveProgress]);
 
   const goHome = () => {
     if (screen === 'playing') addElapsedTime(false);
@@ -332,37 +360,39 @@ export default function Home() {
   };
 
   const finishCorrectFeedback = useCallback(() => {
-    if (actionTimer.current) {
-      clearTimeout(actionTimer.current);
-      actionTimer.current = null;
-    }
+    if (actionTimer.current) clearTimeout(actionTimer.current);
+    actionTimer.current = null;
     narrationRef.current?.pause();
-    if (narrationRef.current) narrationRef.current.currentTime = 0;
     narrationRef.current = null;
     applyMusicVolume(false);
-
     if (questionIndex >= questions.length - 1) {
       addElapsedTime(true);
       stopMusic();
       setScreen('complete');
-      return;
+    } else {
+      prepareQuestion(questionIndex + 1);
     }
+  }, [addElapsedTime, applyMusicVolume, prepareQuestion, questionIndex, questions.length, stopMusic]);
 
-    const nextIndex = questionIndex + 1;
-    setQuestionIndex(nextIndex);
-    setWrongCount(0);
-    setAssist(false);
-    setLocked(false);
-    setFeedback(null);
-    setSelectedLetter(null);
-    playPronunciation(questions[nextIndex].item);
-  }, [addElapsedTime, applyMusicVolume, playPronunciation, questionIndex, questions, stopMusic]);
+  const finishFailedFeedback = useCallback((failureCount = pendingFailureCountRef.current) => {
+    if (actionTimer.current) clearTimeout(actionTimer.current);
+    actionTimer.current = null;
+    if (failureCount >= progressRef.current.hardFailureLimit) {
+      addElapsedTime(false);
+      stopMusic();
+      setScreen('failed');
+    } else if (questionIndex >= questions.length - 1) {
+      addElapsedTime(true);
+      stopMusic();
+      setScreen('complete');
+    } else {
+      prepareQuestion(questionIndex + 1);
+    }
+  }, [addElapsedTime, prepareQuestion, questionIndex, questions.length, stopMusic]);
 
   const dismissWrongFeedback = useCallback(() => {
-    if (actionTimer.current) {
-      clearTimeout(actionTimer.current);
-      actionTimer.current = null;
-    }
+    if (actionTimer.current) clearTimeout(actionTimer.current);
+    actionTimer.current = null;
     setLocked(false);
     setFeedback(null);
     setSelectedLetter(null);
@@ -371,57 +401,54 @@ export default function Home() {
   const skipFeedback = useCallback(() => {
     if (feedback === 'correct') finishCorrectFeedback();
     if (feedback === 'wrong') dismissWrongFeedback();
-  }, [dismissWrongFeedback, feedback, finishCorrectFeedback]);
+    if (feedback === 'questionFailed') finishFailedFeedback();
+  }, [dismissWrongFeedback, feedback, finishCorrectFeedback, finishFailedFeedback]);
+
+  const recordResult = useCallback((item: GameItem, firstCorrect: boolean) => {
+    saveProgress((previous) => {
+      const old = previous.letters[item.letter] ?? { attempts: 0, firstCorrect: 0, lastPlayed: null };
+      return {
+        ...previous,
+        letters: { ...previous.letters, [item.letter]: { attempts: old.attempts + 1, firstCorrect: old.firstCorrect + (firstCorrect ? 1 : 0), lastPlayed: new Date().toISOString() } },
+      };
+    });
+  }, [saveProgress]);
 
   const answerQuestion = useCallback((letter: string) => {
     if (!current || locked || (assist && letter !== current.item.letter)) return;
-
     startMusic();
     setLocked(true);
     setSelectedLetter(letter);
-
     if (letter === current.item.letter) {
       const firstTry = wrongCount === 0;
       if (firstTry) setSessionFirstTries((score) => score + 1);
       setFeedback('correct');
       playTone('correct');
       playPronunciation(current.item);
-
-      saveProgress((previous) => {
-        const previousStats = previous.letters[current.item.letter] ?? {
-          attempts: 0,
-          firstCorrect: 0,
-          lastPlayed: null,
-        };
-        return {
-          ...previous,
-          letters: {
-            ...previous.letters,
-            [current.item.letter]: {
-              attempts: previousStats.attempts + 1,
-              firstCorrect: previousStats.firstCorrect + (firstTry ? 1 : 0),
-              lastPlayed: new Date().toISOString(),
-            },
-          },
-        };
-      });
-
+      recordResult(current.item, firstTry);
       actionTimer.current = setTimeout(finishCorrectFeedback, 4200);
       return;
     }
 
     const nextWrongCount = wrongCount + 1;
     setWrongCount(nextWrongCount);
-    setAssist(nextWrongCount >= 2);
-    setFeedback('wrong');
     playTone('wrong');
-
+    if (progressRef.current.difficulty === 'hard' && nextWrongCount >= HARD_WRONG_LIMIT) {
+      const nextFailures = failedQuestions + 1;
+      pendingFailureCountRef.current = nextFailures;
+      setFailedQuestions(nextFailures);
+      setFeedback('questionFailed');
+      recordResult(current.item, false);
+      actionTimer.current = setTimeout(() => finishFailedFeedback(nextFailures), 1800);
+      return;
+    }
+    setAssist(progressRef.current.difficulty !== 'hard' && nextWrongCount >= 2);
+    setFeedback('wrong');
     actionTimer.current = setTimeout(dismissWrongFeedback, 900);
-  }, [assist, current, dismissWrongFeedback, finishCorrectFeedback, locked, playPronunciation, playTone, saveProgress, startMusic, wrongCount]);
+  }, [assist, current, dismissWrongFeedback, failedQuestions, finishCorrectFeedback, finishFailedFeedback, locked, playPronunciation, playTone, recordResult, startMusic, wrongCount]);
 
   useEffect(() => {
     if (screen !== 'playing' || !current) return;
-
     const handleLetterKey = (event: KeyboardEvent) => {
       if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
       if (feedback) {
@@ -436,7 +463,6 @@ export default function Home() {
       event.preventDefault();
       answerQuestion(letter);
     };
-
     window.addEventListener('keydown', handleLetterKey);
     return () => window.removeEventListener('keydown', handleLetterKey);
   }, [answerQuestion, current, feedback, screen, skipFeedback]);
@@ -444,326 +470,181 @@ export default function Home() {
   const beginParentHold = () => {
     if (gateTimer.current) clearTimeout(gateTimer.current);
     setGateMessage('继续按住…');
-    gateTimer.current = setTimeout(() => {
-      setGateMessage('');
-      setConfirmReset(false);
-      setScreen('parent');
-    }, 3000);
+    gateTimer.current = setTimeout(() => { setGateMessage(''); setConfirmReset(false); setScreen('parent'); }, 3000);
   };
-
-  const cancelParentHold = () => {
-    if (gateTimer.current) clearTimeout(gateTimer.current);
-    gateTimer.current = null;
-  };
+  const cancelParentHold = () => { if (gateTimer.current) clearTimeout(gateTimer.current); gateTimer.current = null; };
 
   const summary = useMemo(() => {
     const records = Object.values(progress.letters);
     const attempts = records.reduce((total, item) => total + item.attempts, 0);
     const firstCorrect = records.reduce((total, item) => total + item.firstCorrect, 0);
-    return {
-      practiced: records.filter((record) => record.attempts > 0).length,
-      attempts,
-      accuracy: attempts ? Math.round((firstCorrect / attempts) * 100) : 0,
-    };
-  }, [progress]);
-
-  const updateVolume = (volume: number) => {
-    saveProgress((previous) => ({ ...previous, volume }));
-    if (narrationRef.current) narrationRef.current.volume = volume;
-  };
-
-  const updateMusicVolume = (musicVolume: number) => {
-    saveProgress((previous) => ({ ...previous, musicVolume }));
-    if (backgroundMusicRef.current) backgroundMusicRef.current.volume = musicVolume;
-  };
+    return { practiced: records.filter((item) => item.attempts > 0).length, attempts, accuracy: attempts ? Math.round((firstCorrect / attempts) * 100) : 0 };
+  }, [progress.letters]);
 
   const resetProgress = () => {
-    const reset = {
-      ...emptyProgress(),
-      volume: progress.volume,
-      musicVolume: progress.musicVolume,
-    };
+    const reset: Progress = { ...emptyProgress(), volume: progress.volume, musicVolume: progress.musicVolume, difficulty: progress.difficulty, hardFailureLimit: progress.hardFailureLimit, customImages: progress.customImages };
     progressRef.current = reset;
     setProgress(reset);
     writeProgress(reset);
     setConfirmReset(false);
   };
 
+  const recognizeExtension = () => {
+    setPendingExtension(null);
+    const entry = findExtension(extensionInput);
+    setRecognizedExtension(entry ?? null);
+    if (!entry) {
+      setExtensionStatus({ tone: 'error', message: '第一版只识别下方安全词表中的常见词，可以输入中文或英文。' });
+    } else if (progress.customImages[entry.id]) {
+      setExtensionStatus({ tone: 'info', message: `${entry.word} · ${entry.chinese} 已在扩展词库中。` });
+    } else {
+      setExtensionStatus({ tone: 'success', message: `已识别：${entry.letter} · ${entry.word} · ${entry.chinese}。现在请上传图片。` });
+    }
+  };
+
+  const handleExtensionUpload = async (file: File | undefined) => {
+    if (!file || !recognizedExtension) return;
+    setUploadLoading(true);
+    try {
+      const imageDataUrl = await loadImageFile(file);
+      setPendingExtension({ entry: recognizedExtension, imageDataUrl });
+      setExtensionStatus({ tone: 'success', message: '图片已缩小并保存在本地预览中，请家长确认内容适合儿童。' });
+    } catch (error) {
+      setPendingExtension(null);
+      setExtensionStatus({ tone: 'error', message: error instanceof Error ? error.message : '图片处理失败。' });
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
+  const confirmExtension = () => {
+    if (!pendingExtension) return;
+    saveProgress((previous) => ({ ...previous, customImages: { ...previous.customImages, [pendingExtension.entry.id]: pendingExtension.imageDataUrl } }));
+    setExtensionStatus({ tone: 'success', message: `${pendingExtension.entry.word} · ${pendingExtension.entry.chinese} 已加入本机词库。` });
+    setExtensionInput('');
+    setRecognizedExtension(null);
+    setPendingExtension(null);
+  };
+
+  const removeExtension = (id: string) => {
+    saveProgress((previous) => {
+      const customImages = { ...previous.customImages };
+      delete customImages[id];
+      return { ...previous, customImages };
+    });
+  };
+
   if (screen === 'playing' && current) {
+    const showPicture = progress.difficulty === 'beginner' || progress.difficulty === 'easy';
+    const showWords = progress.difficulty === 'beginner';
+    const audioOnly = progress.difficulty === 'medium' || progress.difficulty === 'hard';
     return (
       <main className="game-shell">
         <header className="game-header">
           <button className="round-icon-button" type="button" onClick={goHome} aria-label="回到首页">⌂</button>
-          <div className="round-progress" aria-label={`第 ${questionIndex + 1} 题，共 ${questions.length} 题`}>
-            {questions.map((question, index) => (
-              <span className={index <= questionIndex ? 'progress-dot active' : 'progress-dot'} key={`${question.item.letter}-${index}`} />
-            ))}
+          <div>
+            <div className="round-progress" aria-label={`第 ${questionIndex + 1} 题，共 ${questions.length} 题`}>
+              {questions.map((question, index) => <span className={index <= questionIndex ? 'progress-dot active' : 'progress-dot'} key={`${question.item.id}-${index}`} />)}
+            </div>
+            {progress.difficulty === 'hard' && <div className="hard-status">本轮休息题：{failedQuestions}/{progress.hardFailureLimit}</div>}
           </div>
           <button className="round-icon-button speaker-button" type="button" onClick={() => { startMusic(); playPronunciation(current.item); }} aria-label="再听字母和物品读音">🔊</button>
         </header>
 
         <section className="question-area">
-          <div className="learning-focus">
-            <ThingPicture item={current.item} className="focus-picture" />
-            <div className="focus-caption">
-              <span className="focus-word">
-                <strong>{current.item.letter}</strong>
-                <b>{current.item.word.slice(1)}</b>
-              </span>
-              <small>{current.item.chinese}</small>
-            </div>
+          <div className={`learning-focus ${audioOnly ? 'audio-only-focus' : ''} ${showPicture && !showWords ? 'picture-only-focus' : ''}`}>
+            {showPicture && <ThingPicture item={current.item} className="focus-picture" />}
+            {showWords && <div className="focus-caption"><span className="focus-word"><strong>{current.item.letter}</strong><b>{current.item.word.slice(1)}</b></span><small>{current.item.chinese}</small></div>}
+            {audioOnly && <button className="listen-again-card" type="button" onClick={() => playPronunciation(current.item)}><span aria-hidden="true">🔊</span><small>点这里再听一次</small></button>}
           </div>
 
           <div className={`choice-grid choices-${current.choices.length}`}>
             {current.choices.map((letter) => {
               const isTarget = letter === current.item.letter;
-              const classes = [
-                'letter-choice',
-                wrongCount > 0 && isTarget ? 'hinted' : '',
-                assist && isTarget ? 'assisted' : '',
-                selectedLetter === letter && feedback === 'wrong' ? 'wrong-choice' : '',
-                selectedLetter === letter && feedback === 'correct' ? 'correct-choice' : '',
-              ].filter(Boolean).join(' ');
-
-              return (
-                <button
-                  className={classes}
-                  type="button"
-                  key={letter}
-                  disabled={locked || (assist && !isTarget)}
-                  onClick={() => answerQuestion(letter)}
-                  aria-label={`字母 ${letter}`}
-                >
-                  <span>{letter}</span>
-                  <small>按 {letter} 键</small>
-                </button>
-              );
+              const classes = ['letter-choice', wrongCount > 0 && isTarget && progress.difficulty !== 'hard' ? 'hinted' : '', assist && isTarget ? 'assisted' : '', selectedLetter === letter && feedback === 'wrong' ? 'wrong-choice' : '', selectedLetter === letter && feedback === 'correct' ? 'correct-choice' : ''].filter(Boolean).join(' ');
+              return <button className={classes} type="button" key={letter} disabled={locked || (assist && !isTarget)} onClick={() => answerQuestion(letter)} aria-label={`字母 ${letter}`}><span>{letter}</span><small>按 {letter} 键</small></button>;
             })}
           </div>
-
           <div className="feedback-message" role="status" aria-live="polite">
-            {feedback === 'wrong' && (assist ? `一起点击 ${current.item.letter}` : '没关系，再试一次！')}
+            {feedback === 'wrong' && (progress.difficulty === 'hard' ? '再试一次' : assist ? `一起点击 ${current.item.letter}` : '没关系，再试一次！')}
             {!feedback && assist && `看，${current.item.letter} 在闪闪发光！`}
             {!feedback && !assist && '可以点选，也可以按键盘上的字母键'}
           </div>
         </section>
 
-        {feedback === 'wrong' && (
-          <button className="wrong-feedback-overlay" type="button" onClick={skipFeedback} aria-label="答错了，点击继续作答">
-            <span className="wrong-mark" aria-hidden="true">×</span>
-            <span className="wrong-overlay-copy">没关系，再试一次</span>
-          </button>
-        )}
-
-        {feedback === 'correct' && (
-          <button className="reward-overlay" type="button" onClick={skipFeedback} aria-label="跳过正确动画，继续下一题">
-            <div className="reward-card">
-              <div className="reward-stars" aria-hidden="true">★ ✦ ★</div>
-              <ThingPicture item={current.item} className="reward-picture" />
-              <div className="reward-word">
-                <span className="reward-english">
-                  <strong>{current.item.letter}</strong>
-                  {current.item.word.slice(1)}
-                </span>
-                <small>{current.item.chinese}</small>
-              </div>
-              <p>太棒了！</p>
-              <small className="skip-hint">点击或按任意键继续</small>
-            </div>
-          </button>
-        )}
+        {feedback === 'wrong' && <button className="wrong-feedback-overlay" type="button" onClick={skipFeedback} aria-label="答错了，点击继续作答"><span className="wrong-mark" aria-hidden="true">×</span><span className="wrong-overlay-copy">没关系，再试一次</span></button>}
+        {feedback === 'questionFailed' && <button className="wrong-feedback-overlay question-failed-overlay" type="button" onClick={skipFeedback} aria-label="本题结束，点击继续"><span className="wrong-mark soft-cross" aria-hidden="true">×</span><span className="wrong-overlay-copy">这题先休息一下</span><small>点击或按任意键继续</small></button>}
+        {feedback === 'correct' && <button className="reward-overlay" type="button" onClick={skipFeedback} aria-label="跳过正确动画，继续下一题"><div className="reward-card"><div className="reward-stars" aria-hidden="true">★ ✦ ★</div><ThingPicture item={current.item} className="reward-picture" /><div className="reward-word"><span className="reward-english"><strong>{current.item.letter}</strong>{current.item.word.slice(1)}</span><small>{current.item.chinese}</small></div><p>太棒了！</p><small className="skip-hint">点击或按任意键继续</small></div></button>}
       </main>
     );
   }
 
   if (screen === 'complete') {
-    return (
-      <main className="celebration-shell">
-        <section className="celebration-card">
-          <div className="celebration-stars" aria-hidden="true">⭐ ✨ ⭐</div>
-          <div className="trophy" aria-hidden="true">🏆</div>
-          <p className="eyebrow">完成一轮啦</p>
-          <h1>做得真棒！</h1>
-          <p className="celebration-copy">你完成了 5 道字母题，第一次就答对了 {sessionFirstTries} 题。</p>
-          <div className="celebration-actions">
-            <button className="start-button compact" type="button" onClick={startGame}>
-              再玩一次
-            </button>
-            <button className="soft-button" type="button" onClick={goHome}>回到首页</button>
-          </div>
-        </section>
-      </main>
-    );
+    return <main className="celebration-shell"><section className="celebration-card"><div className="celebration-stars" aria-hidden="true">⭐ ✨ ⭐</div><div className="trophy" aria-hidden="true">🏆</div><p className="eyebrow">完成一轮啦</p><h1>做得真棒！</h1><p className="celebration-copy">你完成了 {QUESTION_COUNT} 道字母题，第一次就答对了 {sessionFirstTries} 题。</p><div className="celebration-actions"><button className="start-button compact" type="button" onClick={startGame}>再玩一次</button><button className="soft-button" type="button" onClick={goHome}>回到首页</button></div></section></main>;
+  }
+
+  if (screen === 'failed') {
+    return <main className="celebration-shell gentle-failure-shell"><section className="celebration-card gentle-failure-card"><div className="trophy" aria-hidden="true">🌱</div><p className="eyebrow">今天先到这里</p><h1>休息一下吧</h1><p className="celebration-copy">困难模式已经有 {failedQuestions} 题需要休息。喝口水，准备好以后再来玩。</p><div className="celebration-actions"><button className="start-button compact" type="button" onClick={startGame}>重新挑战</button><button className="soft-button" type="button" onClick={goHome}>换个难度</button></div></section></main>;
   }
 
   if (screen === 'parent') {
+    const enabledExtensions = EXTENSION_CATALOG.filter((item) => progress.customImages[item.id]);
     return (
       <main className="parent-shell">
-        <header className="parent-header">
-          <div>
-            <p className="eyebrow">仅保存在这台设备</p>
-            <h1>家长专区</h1>
-          </div>
-          <button className="soft-button" type="button" onClick={goHome}>完成</button>
-        </header>
-
+        <header className="parent-header"><div><p className="eyebrow">仅保存在这台设备</p><h1>家长专区</h1></div><button className="soft-button" type="button" onClick={goHome}>完成</button></header>
         <section className="summary-grid" aria-label="学习概况">
           <article><span>认识过</span><strong>{summary.practiced}<small>/22</small></strong><p>个字母</p></article>
           <article><span>完成练习</span><strong>{summary.attempts}</strong><p>道题</p></article>
           <article><span>首次正确率</span><strong>{summary.accuracy}<small>%</small></strong><p>不显示给孩子</p></article>
+          <article><span>可用物品</span><strong>{availableItems.length}</strong><p>含 {customItems.length} 个家长扩展词</p></article>
           <article><span>练习时间</span><strong className="duration-number">{formatDuration(progress.totalSeconds)}</strong><p>{progress.sessions} 个完整小回合</p></article>
         </section>
 
-        <section className="parent-panel settings-panel">
-          <div>
-            <h2>声音</h2>
-            <p>字母与物品使用随游戏保存的儿童风格预生成读音；背景音乐会在读音播放时自动变轻。</p>
-          </div>
-          <div className="sound-control-stack">
-            <label className="volume-control">
-              <strong>读音</strong>
-              <span aria-hidden="true">🔈</span>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={progress.volume}
-                onChange={(event) => updateVolume(Number(event.target.value))}
-                aria-label="读音音量"
-              />
-              <span aria-hidden="true">🔊</span>
-            </label>
-            <label className="volume-control">
-              <strong>音乐</strong>
-              <span aria-hidden="true">♪</span>
-              <input
-                type="range"
-                min="0"
-                max="0.4"
-                step="0.01"
-                value={progress.musicVolume}
-                onChange={(event) => updateMusicVolume(Number(event.target.value))}
-                aria-label="背景音乐音量"
-              />
-              <span aria-hidden="true">♫</span>
-            </label>
-          </div>
-        </section>
+        <section className="parent-panel difficulty-parent-panel"><div><h2>难度与困难模式</h2><p>困难模式同题连续错 {HARD_WRONG_LIMIT} 次，本题会先结束。</p></div><label className="hard-limit-control"><span>累计失败上限</span><input type="range" min="1" max="5" step="1" value={progress.hardFailureLimit} onChange={(event) => saveProgress((previous) => ({ ...previous, hardFailureLimit: Number(event.target.value) }))} /><strong>{progress.hardFailureLimit} 题</strong></label></section>
 
-        <section className="parent-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>字母学习记录</h2>
-              <p>“首次正确”只统计每道题第一次点击。</p>
-            </div>
-          </div>
-          <div className="letter-stats-grid">
-            {LETTERS.map((item) => {
-              const stats = progress.letters[item.letter];
-              const accuracy = stats?.attempts ? Math.round((stats.firstCorrect / stats.attempts) * 100) : null;
-              return (
-                <article className="letter-stat" key={item.letter}>
-                  <div className="stat-letter" style={{ background: item.color }}>{item.letter}</div>
-                  <div>
-                    <strong>{item.word} · {item.chinese}</strong>
-                    <p>{stats?.attempts ?? 0} 次练习 · {accuracy === null ? '尚无正确率' : `${accuracy}% 首次正确`}</p>
-                    {stats?.lastPlayed && <small>最近：{new Date(stats.lastPlayed).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</small>}
-                  </div>
-                  <ThingPicture item={item} className="stat-picture" />
-                </article>
-              );
-            })}
-          </div>
-        </section>
+        <section className="parent-panel settings-panel"><div><h2>声音</h2><p>标准美式英语和普通话读音随游戏保存；背景音乐在读音时自动变轻。</p></div><div className="sound-control-stack"><label className="volume-control"><strong>读音</strong><span aria-hidden="true">🔈</span><input type="range" min="0" max="1" step="0.05" value={progress.volume} onChange={(event) => saveProgress((previous) => ({ ...previous, volume: Number(event.target.value) }))} aria-label="读音音量" /><span aria-hidden="true">🔊</span></label><label className="volume-control"><strong>音乐</strong><span aria-hidden="true">♪</span><input type="range" min="0" max="0.4" step="0.01" value={progress.musicVolume} onChange={(event) => { const musicVolume = Number(event.target.value); saveProgress((previous) => ({ ...previous, musicVolume })); if (backgroundMusicRef.current) backgroundMusicRef.current.volume = musicVolume; }} aria-label="背景音乐音量" /><span aria-hidden="true">♫</span></label></div></section>
 
-        <section className="parent-panel privacy-panel">
-          <div>
-            <h2>隐私与记录</h2>
-            <p>无需登录，没有服务器数据库、广告或追踪。不使用麦克风、摄像头和位置。所有统计只在本机，清除后无法恢复。</p>
-          </div>
-          {!confirmReset ? (
-            <button className="danger-soft-button" type="button" onClick={() => setConfirmReset(true)}>清除学习记录</button>
-          ) : (
-            <div className="reset-confirm">
-              <span>确定清除全部记录吗？</span>
-              <button type="button" onClick={resetProgress}>确定清除</button>
-              <button type="button" onClick={() => setConfirmReset(false)}>取消</button>
+        <section className="parent-panel extension-panel">
+          <div className="extension-heading"><div><h2>本地扩展词库</h2><p>输入中文或英文，由本地安全词表识别；图片由家长上传并确认。整个过程无需联网，也不会安装模型。</p></div><span className="local-badge">完全本地</span></div>
+          <div className="extension-search-row"><input value={extensionInput} onChange={(event) => setExtensionInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') recognizeExtension(); }} placeholder="例如：蝴蝶 或 butterfly" maxLength={30} aria-label="输入要增加的中文或英文单词" /><button className="soft-button primary-soft-button" type="button" onClick={recognizeExtension}>识别单词</button></div>
+          {extensionStatus && <p className={`extension-status ${extensionStatus.tone}`} role="status">{extensionStatus.message}</p>}
+
+          {recognizedExtension && !progress.customImages[recognizedExtension.id] && (
+            <div className="upload-step">
+              <div><strong>{recognizedExtension.letter} · {recognizedExtension.word}</strong><span>{recognizedExtension.chinese}</span></div>
+              <label className="upload-button"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void handleExtensionUpload(event.target.files?.[0])} /><span>{uploadLoading ? '正在处理…' : '选择本地图片'}</span></label>
+              <small>支持 PNG、JPG、WebP，最大 6 MB；游戏会自动缩小图片以节省空间。</small>
             </div>
           )}
+
+          {pendingExtension && (
+            <div className="extension-preview"><ThingPicture item={activateExtension(pendingExtension.entry, pendingExtension.imageDataUrl)} className="extension-preview-picture" /><div><strong>{pendingExtension.entry.letter} · {pendingExtension.entry.word}</strong><span>{pendingExtension.entry.chinese}</span><small>请家长确认图片清楚、对应准确并且适合儿童。</small></div><button className="soft-button" type="button" onClick={() => playPronunciation(activateExtension(pendingExtension.entry, pendingExtension.imageDataUrl))}>试听读音</button><button className="soft-button confirm-extension-button" type="button" onClick={confirmExtension}>确认加入</button><button className="soft-button" type="button" onClick={() => setPendingExtension(null)}>重选图片</button></div>
+          )}
+
+          <details className="safe-catalog"><summary>查看第一版可识别的 {EXTENSION_CATALOG.length} 个安全词</summary><div className="catalog-chips">{EXTENSION_CATALOG.map((item) => <button key={item.id} type="button" onClick={() => setExtensionInput(item.chinese)}>{item.word} · {item.chinese}</button>)}</div></details>
+
+          {enabledExtensions.length > 0 && <div className="enabled-extensions"><h3>已加入的扩展词</h3>{enabledExtensions.map((entry) => { const item = activateExtension(entry, progress.customImages[entry.id]); return <article key={entry.id}><ThingPicture item={item} className="enabled-extension-picture" /><span><strong>{entry.word}</strong><small>{entry.chinese}</small></span><button type="button" onClick={() => playPronunciation(item)}>试听</button><button type="button" onClick={() => removeExtension(entry.id)}>移除</button></article>; })}</div>}
+
+          <div className="sentinel-note"><strong>儿童内容安全</strong><span>系统不搜索网络图片。只有家长亲自选择、看到预览并确认的图片才能进入题库；图片只保存在当前浏览器。</span></div>
         </section>
+
+        <section className="parent-panel"><div className="panel-heading"><div><h2>字母学习记录</h2><p>“首次正确”只统计每道题第一次选择。</p></div></div><div className="letter-stats-grid">{CORE_ITEMS.map((item) => { const stats = progress.letters[item.letter]; const accuracy = stats?.attempts ? Math.round((stats.firstCorrect / stats.attempts) * 100) : null; return <article className="letter-stat" key={item.letter}><div className="stat-letter" style={{ background: item.color }}>{item.letter}</div><div><strong>{availableItems.filter((entry) => entry.letter === item.letter).length} 个物品</strong><p>{stats?.attempts ?? 0} 次练习 · {accuracy === null ? '尚无正确率' : `${accuracy}% 首次正确`}</p>{stats?.lastPlayed && <small>最近：{new Date(stats.lastPlayed).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</small>}</div><ThingPicture item={item} className="stat-picture" /></article>; })}</div></section>
+
+        <section className="parent-panel privacy-panel"><div><h2>隐私与记录</h2><p>无需登录，没有服务器数据库、广告或追踪。不使用麦克风、摄像头和位置。上传图片、扩展词和学习统计都只保存在本机。</p></div>{!confirmReset ? <button className="danger-soft-button" type="button" onClick={() => setConfirmReset(true)}>清除学习记录</button> : <div className="reset-confirm"><span>确定清除学习统计吗？已加词库会保留。</span><button type="button" onClick={resetProgress}>确定清除</button><button type="button" onClick={() => setConfirmReset(false)}>取消</button></div>}</section>
       </main>
     );
   }
 
   return (
     <main className="home-shell">
-      <div className="sun-glow" aria-hidden="true" />
-      <div className="cloud cloud-one" aria-hidden="true" />
-      <div className="cloud cloud-two" aria-hidden="true" />
-
-      <header className="home-header">
-        <div className="brand-mark" aria-label="Alphabet and Things">
-          <span className="brand-a">A</span>
-          <ThingPicture item={LETTERS[0]} className="brand-apple" />
-        </div>
-        <div className="parent-gate-wrap">
-          <button
-            className="grown-up-button"
-            type="button"
-            aria-label="家长专区，长按三秒进入"
-            onPointerDown={beginParentHold}
-            onPointerUp={cancelParentHold}
-            onPointerLeave={cancelParentHold}
-            onPointerCancel={cancelParentHold}
-            onKeyDown={(event) => {
-              if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) beginParentHold();
-            }}
-            onKeyUp={cancelParentHold}
-            onContextMenu={(event) => event.preventDefault()}
-            onClick={() => setGateMessage('请长按 3 秒进入')}
-          >
-            <span aria-hidden="true">🔒</span>
-            家长专区
-          </button>
-          {gateMessage && <span className="gate-message" role="status">{gateMessage}</span>}
-        </div>
-      </header>
-
+      <div className="sun-glow" aria-hidden="true" /><div className="cloud cloud-one" aria-hidden="true" /><div className="cloud cloud-two" aria-hidden="true" />
+      <header className="home-header"><div className="brand-mark" aria-label="Alphabet and Things"><span className="brand-a">A</span><ThingPicture item={CORE_ITEMS[0]} className="brand-apple" /></div><div className="parent-gate-wrap"><button className="grown-up-button" type="button" aria-label="家长专区，长按三秒进入" onPointerDown={beginParentHold} onPointerUp={cancelParentHold} onPointerLeave={cancelParentHold} onPointerCancel={cancelParentHold} onKeyDown={(event) => { if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) beginParentHold(); }} onKeyUp={cancelParentHold} onContextMenu={(event) => event.preventDefault()} onClick={() => setGateMessage('请长按 3 秒进入')}><span aria-hidden="true">🔒</span>家长专区</button>{gateMessage && <span className="gate-message" role="status">{gateMessage}</span>}</div></header>
       <section className="hero" aria-labelledby="game-title">
-        <div className="hero-copy">
-          <p className="eyebrow">听一听 · 找一找 · 认识字母</p>
-          <h1 id="game-title">
-            <span>字母和好朋友</span>
-            <small>Alphabet &amp; Things</small>
-          </h1>
-          <p className="welcome-copy">和苹果、猫咪、火车一起，<br />开心认识英文字母！</p>
-
-          <button className="start-button" type="button" onClick={startGame}>
-            <span className="play-icon" aria-hidden="true">▶</span>
-            <span>开始游戏<small>LET&apos;S PLAY!</small></span>
-          </button>
-
-          <div className="session-note" aria-label="每轮五题，大约三分钟">
-            <span aria-hidden="true">⭐</span>
-            每次 5 题 · 无需登录 · 记录只存在本机
-          </div>
+        <div className="hero-copy"><p className="eyebrow">听一听 · 找一找 · 认识字母</p><h1 id="game-title"><span>字母和好朋友</span><small>Alphabet &amp; Things</small></h1><p className="welcome-copy">和动物、工程车、水果一起，<br />开心认识英文字母！</p>
+          <div className="difficulty-picker" aria-label="选择游戏难度">{DIFFICULTIES.map((difficulty) => <button key={difficulty.id} type="button" className={progress.difficulty === difficulty.id ? 'difficulty-option selected' : 'difficulty-option'} onClick={() => saveProgress((previous) => ({ ...previous, difficulty: difficulty.id }))} aria-pressed={progress.difficulty === difficulty.id}><strong>{difficulty.label}</strong><span>{difficulty.short}</span></button>)}</div>
+          <button className="start-button" type="button" onClick={startGame}><span className="play-icon" aria-hidden="true">▶</span><span>开始{activeDifficulty.label}游戏<small>LET&apos;S PLAY!</small></span></button><div className="session-note" aria-label="每轮五题"><span aria-hidden="true">⭐</span>每次 5 题 · {availableItems.length} 个物品 · 记录只存在本机</div>
         </div>
-
-        <div className="friends-stage" aria-label="字母与事物示例">
-          <div className="rainbow" aria-hidden="true"><span /></div>
-          {LETTERS.slice(0, 3).map((item, index) => (
-            <div className={`friend friend-${['apple', 'ball', 'cat'][index]}`} key={item.letter}>
-              <span className="friend-letter">{item.letter}</span>
-              <ThingPicture item={item} className="friend-thing" />
-            </div>
-          ))}
-          <div className="ground" aria-hidden="true">
-            <span className="flower flower-one">✿</span>
-            <span className="flower flower-two">✿</span>
-            <span className="flower flower-three">✿</span>
-          </div>
-        </div>
+        <div className="friends-stage" aria-label="字母与事物示例"><div className="rainbow" aria-hidden="true"><span /></div>{CORE_ITEMS.slice(0, 3).map((item, index) => <div className={`friend friend-${['apple', 'ball', 'cat'][index]}`} key={item.letter}><span className="friend-letter">{item.letter}</span><ThingPicture item={item} className="friend-thing" /></div>)}<div className="ground" aria-hidden="true"><span className="flower flower-one">✿</span><span className="flower flower-two">✿</span><span className="flower flower-three">✿</span></div></div>
       </section>
     </main>
   );

@@ -1,7 +1,7 @@
 {
   "name": "AlphabetAndThings - 字母和好朋友",
   "short_name": "AlphabetAndThings",
-  "description": "无需登录、记录只存本机的中英双语字母与常见事物认知小游戏。",
+  "description": "含四档难度、58 个内置物品，无需登录且记录只存本机的中英双语字母认知小游戏。",
   "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",
