@@ -16,6 +16,11 @@ export type DirectImage = {
   src: string;
 };
 
+export type AudioPart = {
+  src: string;
+  pauseAfter?: number;
+};
+
 export type GameItem = {
   id: string;
   kind: 'word' | 'number';
@@ -24,7 +29,8 @@ export type GameItem = {
   chinese: string;
   category: ItemCategory;
   color: string;
-  audio: string;
+  audio?: string;
+  audioParts?: AudioPart[];
   image?: AtlasImage | DirectImage;
   value?: number;
 };
@@ -163,19 +169,40 @@ export const EXPANDED_ITEMS: GameItem[] = [
   expandedAtlas('turtle', 'T', 'Turtle', '乌龟', 'animal', 3, 1),
   expandedAtlas('bee', 'B', 'Bee', '蜜蜂', 'animal', 4, 1),
   expandedAtlas('sheep', 'S', 'Sheep', '绵羊', 'animal', 5, 1),
+  directImage('crocodile', 'C', 'Crocodile', '鳄鱼', 'animal', 'things/crocodile-v1.png'),
+  directImage('tiger', 'T', 'Tiger', '老虎', 'animal', 'things/tiger-v1.png'),
+  directImage('cattle', 'C', 'Cattle', '牛群', 'animal', 'things/cattle-v1.png'),
+  directImage('chicken', 'C', 'Chicken', '鸡', 'animal', 'things/chicken-v1.png'),
+  directImage('giraffe', 'G', 'Giraffe', '长颈鹿', 'animal', 'things/giraffe-v1.png'),
+  directImage('penguins', 'P', 'Penguins', '企鹅', 'animal', 'things/penguins-v1.png'),
+  directImage('shark', 'S', 'Shark', '鲨鱼', 'animal', 'things/shark-v1.png'),
   expandedAtlas('bus', 'B', 'Bus', '巴士', 'vehicle', 0, 2),
   expandedAtlas('car', 'C', 'Car', '小汽车', 'vehicle', 1, 2),
   expandedAtlas('crane-truck', 'C', 'Crane truck', '起重车', 'vehicle', 2, 2),
   expandedAtlas('excavator', 'E', 'Excavator', '挖掘机', 'vehicle', 3, 2),
+  directImage('bulldozer', 'B', 'Bulldozer', '推土机', 'vehicle', 'things/bulldozer-v1.png'),
+  directImage('road-roller', 'R', 'Road roller', '压路机', 'vehicle', 'things/road-roller-v1.png'),
+  directImage('monster-truck', 'M', 'Monster truck', '怪兽卡车', 'vehicle', 'things/monster-truck-v1.png'),
+  directImage('fire-engine', 'F', 'Fire engine', '消防车', 'vehicle', 'things/fire-engine-v1.png'),
+  directImage('forklift', 'F', 'Forklift', '叉车', 'vehicle', 'things/forklift-v1.png'),
+  directImage('race-car', 'R', 'Race car', '赛车', 'vehicle', 'things/race-car-v1.png'),
+  directImage('airplane', 'A', 'Airplane', '飞机', 'vehicle', 'things/airplane-v1.png'),
+  directImage('tank', 'T', 'Tank', '坦克', 'vehicle', 'things/tank-v1.png'),
   expandedAtlas('fire-truck', 'F', 'Fire truck', '消防车', 'vehicle', 4, 2),
   expandedAtlas('garbage-truck', 'G', 'Garbage truck', '垃圾车', 'vehicle', 5, 2),
   expandedAtlas('helicopter', 'H', 'Helicopter', '直升机', 'vehicle', 0, 3),
   directImage('leaf', 'L', 'Leaf', '叶子', 'nature', 'things/leaf-v1.png'),
+  directImage('tree', 'T', 'Tree', '树', 'nature', 'things/tree-v1.png'),
+  directImage('flower', 'F', 'Flower', '花', 'nature', 'things/flower-v1.png'),
+  directImage('fire', 'F', 'Fire', '火', 'nature', 'things/fire-v1.png'),
+  directImage('water', 'W', 'Water', '水', 'nature', 'things/water-v1.png'),
   expandedAtlas('police-car', 'P', 'Police car', '警车', 'vehicle', 2, 3),
   expandedAtlas('ship', 'S', 'Ship', '轮船', 'vehicle', 3, 3),
   expandedAtlas('tractor', 'T', 'Tractor', '拖拉机', 'vehicle', 4, 3),
   expandedAtlas('dump-truck', 'D', 'Dump truck', '自卸卡车', 'vehicle', 5, 3),
   expandedAtlas('banana', 'B', 'Banana', '香蕉', 'fruit', 0, 4),
+  directImage('blueberry', 'B', 'Blueberry', '蓝莓', 'fruit', 'things/blueberry-v1.png'),
+  directImage('avocado', 'A', 'Avocado', '牛油果', 'fruit', 'things/avocado-v1.png'),
   expandedAtlas('carrot', 'C', 'Carrot', '胡萝卜', 'vegetable', 1, 4),
   expandedAtlas('cherries', 'C', 'Cherries', '樱桃', 'fruit', 2, 4),
   expandedAtlas('lemon', 'L', 'Lemon', '柠檬', 'fruit', 3, 4),
@@ -187,33 +214,131 @@ export const EXPANDED_ITEMS: GameItem[] = [
   expandedAtlas('book', 'B', 'Book', '图画书', 'daily', 3, 5),
   expandedAtlas('cup', 'C', 'Cup', '杯子', 'daily', 4, 5),
   expandedAtlas('toothbrush', 'T', 'Toothbrush', '牙刷', 'daily', 5, 5),
+  directImage('milk', 'M', 'Milk', '牛奶', 'food', 'things/milk-v1.png'),
+  directImage('beef', 'B', 'Beef', '牛肉', 'food', 'things/beef-v1.png'),
+  directImage('rice', 'R', 'Rice', '米饭', 'food', 'things/rice-v1.png'),
 ];
 
 export const BUILTIN_ITEMS = [...CORE_ITEMS, ...EXPANDED_ITEMS];
 export const ALLOWED_LETTERS = [...new Set(BUILTIN_ITEMS.map((item) => item.letter))];
 
-const NUMBER_WORDS = [
-  'Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
-  'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
-  'Seventeen', 'Eighteen', 'Nineteen', 'Twenty',
-];
-const NUMBER_WORDS_CHINESE = [
-  '零', '一', '二', '三', '四', '五', '六', '七', '八', '九',
-  '十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十',
-];
 const NUMBER_COLORS = ['#ef6475', '#5e9de1', '#55bca8', '#e9a83d', '#9a77db'];
 
-export const NUMBER_ITEMS: GameItem[] = Array.from({ length: 21 }, (_, value) => ({
-  id: `number-${value}`,
-  kind: 'number',
-  letter: String(value),
-  word: NUMBER_WORDS[value],
-  chinese: NUMBER_WORDS_CHINESE[value],
-  category: 'number',
-  color: NUMBER_COLORS[value % NUMBER_COLORS.length],
-  audio: `audio/voice/numbers/${value}.mp3`,
-  value,
-}));
+const ENGLISH_SMALL = [
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
+  'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen',
+  'seventeen', 'eighteen', 'nineteen',
+];
+const ENGLISH_TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+const CHINESE_DIGITS = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const CHINESE_SMALL_UNITS = ['', '十', '百', '千'];
+const CHINESE_GROUP_UNITS = ['', '万', '亿'];
+const CHINESE_AUDIO_IDS: Record<string, string> = {
+  零: 'zero', 一: 'one', 二: 'two', 三: 'three', 四: 'four', 五: 'five',
+  六: 'six', 七: 'seven', 八: 'eight', 九: 'nine', 十: 'ten', 百: 'hundred',
+  千: 'thousand', 万: 'ten-thousand', 亿: 'hundred-million',
+};
+
+export const MAX_CUSTOM_NUMBER = 999_999_999;
+
+function englishNumberTokens(value: number): string[] {
+  if (value < 20) return [ENGLISH_SMALL[value]];
+  if (value < 100) {
+    const remainder = value % 10;
+    return [ENGLISH_TENS[Math.floor(value / 10)], ...(remainder ? englishNumberTokens(remainder) : [])];
+  }
+  if (value < 1_000) {
+    const remainder = value % 100;
+    return [...englishNumberTokens(Math.floor(value / 100)), 'hundred', ...(remainder ? englishNumberTokens(remainder) : [])];
+  }
+  for (const [size, name] of [[1_000_000, 'million'], [1_000, 'thousand']] as const) {
+    if (value >= size) {
+      const remainder = value % size;
+      return [...englishNumberTokens(Math.floor(value / size)), name, ...(remainder ? englishNumberTokens(remainder) : [])];
+    }
+  }
+  return [];
+}
+
+function chineseSection(value: number, omitLeadingOne: boolean): string {
+  let result = '';
+  let zeroPending = false;
+  for (let position = 3; position >= 0; position -= 1) {
+    const unitValue = 10 ** position;
+    const digit = Math.floor(value / unitValue) % 10;
+    if (digit === 0) {
+      if (result && value % unitValue !== 0) zeroPending = true;
+      continue;
+    }
+    if (zeroPending) result += '零';
+    if (!(omitLeadingOne && position === 1 && digit === 1 && result === '')) result += CHINESE_DIGITS[digit];
+    result += CHINESE_SMALL_UNITS[position];
+    zeroPending = false;
+  }
+  return result;
+}
+
+export function numberToChinese(value: number): string {
+  if (value === 0) return '零';
+  const sections: number[] = [];
+  let remaining = value;
+  while (remaining > 0) {
+    sections.push(remaining % 10_000);
+    remaining = Math.floor(remaining / 10_000);
+  }
+  let result = '';
+  let zeroPending = false;
+  for (let index = sections.length - 1; index >= 0; index -= 1) {
+    const section = sections[index];
+    if (section === 0) {
+      if (result) zeroPending = true;
+      continue;
+    }
+    if (result && (zeroPending || section < 1_000)) result += '零';
+    result += chineseSection(section, result === '') + CHINESE_GROUP_UNITS[index];
+    zeroPending = false;
+  }
+  return result;
+}
+
+export function numberToEnglish(value: number): string {
+  const text = englishNumberTokens(value).join(' ');
+  return text ? text[0].toUpperCase() + text.slice(1) : '';
+}
+
+function numberAudioParts(value: number): AudioPart[] {
+  const english = englishNumberTokens(value);
+  const chinese = Array.from(numberToChinese(value));
+  return [
+    ...english.map((token, index) => ({
+      src: `audio/voice/number-parts/en/${token}.mp3`,
+      pauseAfter: index === english.length - 1 ? 450 : 55,
+    })),
+    ...chinese.map((token, index) => ({
+      src: `audio/voice/number-parts/zh/${CHINESE_AUDIO_IDS[token]}.mp3`,
+      pauseAfter: index === chinese.length - 1 ? 0 : 45,
+    })),
+  ];
+}
+
+export function createNumberItem(value: number): GameItem {
+  const builtIn = value <= 20;
+  return {
+    id: `number-${value}`,
+    kind: 'number',
+    letter: String(value),
+    word: numberToEnglish(value),
+    chinese: numberToChinese(value),
+    category: 'number',
+    color: NUMBER_COLORS[value % NUMBER_COLORS.length],
+    ...(builtIn
+      ? { audio: `audio/voice/numbers/${value}.mp3` }
+      : { audioParts: numberAudioParts(value) }),
+    value,
+  };
+}
+
+export const NUMBER_ITEMS: GameItem[] = Array.from({ length: 21 }, (_, value) => createNumberItem(value));
 
 const extension = (
   id: string,
@@ -238,7 +363,6 @@ const extension = (
 // type either language, then supply and approve their own picture.
 export const EXTENSION_CATALOG: ExtensionCatalogItem[] = [
   extension('ant', 'A', 'Ant', '蚂蚁', 'animal'),
-  extension('airplane', 'A', 'Airplane', '飞机', 'vehicle', ['plane']),
   extension('bread', 'B', 'Bread', '面包', 'food'),
   extension('butterfly', 'B', 'Butterfly', '蝴蝶', 'animal'),
   extension('cake', 'C', 'Cake', '蛋糕', 'food'),
@@ -247,17 +371,14 @@ export const EXTENSION_CATALOG: ExtensionCatalogItem[] = [
   extension('door', 'D', 'Door', '门', 'daily', ['房门']),
   extension('fork', 'F', 'Fork', '叉子', 'daily', ['餐叉']),
   extension('goat', 'G', 'Goat', '山羊', 'animal'),
-  extension('giraffe', 'G', 'Giraffe', '长颈鹿', 'animal'),
   extension('key', 'K', 'Key', '钥匙', 'daily'),
   extension('lamp', 'L', 'Lamp', '灯', 'daily', ['台灯', 'light']),
-  extension('milk', 'M', 'Milk', '牛奶', 'food'),
   extension('octopus', 'O', 'Octopus', '章鱼', 'animal'),
   extension('owl', 'O', 'Owl', '猫头鹰', 'animal'),
   extension('penguin', 'P', 'Penguin', '企鹅', 'animal'),
   extension('robot', 'R', 'Robot', '机器人', 'daily'),
   extension('spoon', 'S', 'Spoon', '勺子', 'daily'),
   extension('star', 'S', 'Star', '星星', 'nature'),
-  extension('tiger', 'T', 'Tiger', '老虎', 'animal'),
   extension('unicorn', 'U', 'Unicorn', '独角兽', 'animal'),
   extension('watch', 'W', 'Watch', '手表', 'daily'),
 ];

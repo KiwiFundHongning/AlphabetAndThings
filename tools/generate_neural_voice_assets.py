@@ -31,7 +31,24 @@ KOKORO_WORD_VOICE_OVERRIDES = {
     "ship": "af_nicole",
 }
 EDGE_ENGLISH_WORD_VOICE = "en-US-JennyNeural"
-EDGE_ENGLISH_WORD_IDS = {"fish"}
+EDGE_ENGLISH_WORD_IDS = {"fish", "forklift", "penguins"}
+CHINESE_VOICE_OVERRIDES = {
+    # Focused offline recognition checks choose the clearest standard-Mandarin
+    # reading for short new terms while keeping a gentle, youthful tone.
+    "bulldozer": "zh-CN-YunxiaNeural",
+    "road-roller": "zh-CN-YunxiaNeural",
+    "fire-engine": "zh-CN-YunxiaNeural",
+    "forklift": "zh-CN-YunxiaNeural",
+    "tank": "zh-CN-YunxiaNeural",
+    "crocodile": "zh-CN-YunxiaNeural",
+    "cattle": "zh-CN-YunxiaNeural",
+    "chicken": "zh-CN-YunxiaNeural",
+    "penguins": "zh-CN-XiaoyiNeural",
+    "shark": "zh-CN-XiaoyiNeural",
+    "flower": "zh-CN-YunxiaNeural",
+    "water": "zh-CN-YunxiaNeural",
+    "beef": "zh-CN-YunxiaNeural",
+}
 EDGE_ENGLISH_NUMBER_VOICE = "en-US-AvaNeural"
 EDGE_ENGLISH_NUMBER_VALUES = {2, 5, 6, 8}
 LETTER_NAMES = {
@@ -60,6 +77,26 @@ ITEMS = [
     ("bus", "B", "Bus", "巴士"), ("car", "C", "Car", "小汽车"),
     ("crane-truck", "C", "Crane truck", "起重车"),
     ("excavator", "E", "Excavator", "挖掘机"),
+    ("bulldozer", "B", "Bulldozer", "推土机"),
+    ("road-roller", "R", "Road roller", "压路机"),
+    ("monster-truck", "M", "Monster truck", "怪兽卡车"),
+    ("fire-engine", "F", "Fire engine", "消防车"),
+    ("forklift", "F", "Forklift", "叉车"),
+    ("race-car", "R", "Race car", "赛车"),
+    ("tank", "T", "Tank", "坦克"),
+    ("crocodile", "C", "Crocodile", "鳄鱼"),
+    ("cattle", "C", "Cattle", "牛群"),
+    ("chicken", "C", "Chicken", "鸡"),
+    ("penguins", "P", "Penguins", "企鹅"),
+    ("shark", "S", "Shark", "鲨鱼"),
+    ("blueberry", "B", "Blueberry", "蓝莓"),
+    ("avocado", "A", "Avocado", "牛油果"),
+    ("tree", "T", "Tree", "树"),
+    ("flower", "F", "Flower", "花"),
+    ("fire", "F", "Fire", "火"),
+    ("water", "W", "Water", "水"),
+    ("beef", "B", "Beef", "牛肉"),
+    ("rice", "R", "Rice", "米饭"),
     ("fire-truck", "F", "Fire truck", "消防车"),
     ("garbage-truck", "G", "Garbage truck", "垃圾车"),
     ("helicopter", "H", "Helicopter", "直升机"),
@@ -148,11 +185,13 @@ def combine_segments(
         "areverse,silenceremove=start_periods=1:start_duration=0.02:"
         "start_threshold=-58dB,areverse"
     )
+    word_trim = edge_trim if word.suffix.lower() == ".mp3" else kokoro_trim
+    effective_letter_pause = max(0, letter_word_pause - (0.22 if word.suffix.lower() == ".mp3" else 0))
     filters = (
         # Jenny reads isolated uppercase letters reliably. A small tempo stretch
         # keeps short long-vowel names such as E and P clear without changing pitch.
-        f"[0:a]{edge_trim},atempo=0.75[letter];[1:a]{kokoro_trim}[word];[2:a]{edge_trim}[chinese];"
-        f"anullsrc=r=24000:cl=mono:d={letter_word_pause:.3f}[letter_pause];"
+        f"[0:a]{edge_trim},atempo=0.75[letter];[1:a]{word_trim}[word];[2:a]{edge_trim}[chinese];"
+        f"anullsrc=r=24000:cl=mono:d={effective_letter_pause:.3f}[letter_pause];"
         f"anullsrc=r=24000:cl=mono:d={word_chinese_pause:.3f}[chinese_pause];"
         "[letter][letter_pause][word][chinese_pause][chinese]"
         # Edge voice files are already level-matched. Avoid a second loudness
@@ -236,7 +275,13 @@ async def generate(
             word_file = temp_root / f"{item_id}-word.{'mp3' if item_id in EDGE_ENGLISH_WORD_IDS else 'wav'}"
             chinese_file = temp_root / f"{item_id}-zh.mp3"
             sources.append((item_id, letter, word, chinese, word_file, chinese_file))
-            jobs.append(synthesize(chinese, CHINESE_VOICE, chinese_file, semaphore))
+            jobs.append(synthesize(
+                f"{chinese}。",
+                CHINESE_VOICE_OVERRIDES.get(item_id, CHINESE_VOICE),
+                chinese_file,
+                semaphore,
+                "-10%",
+            ))
             if item_id in EDGE_ENGLISH_WORD_IDS:
                 jobs.append(synthesize(word, EDGE_ENGLISH_WORD_VOICE, word_file, semaphore))
 

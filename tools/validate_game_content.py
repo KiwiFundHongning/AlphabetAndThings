@@ -12,19 +12,23 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA_FILE = ROOT / "web" / "app" / "game-data.ts"
 AUDIO_DIR = ROOT / "web" / "public" / "audio" / "voice" / "items"
 NUMBER_AUDIO_DIR = ROOT / "web" / "public" / "audio" / "voice" / "numbers"
+NUMBER_PART_AUDIO_DIR = ROOT / "web" / "public" / "audio" / "voice" / "number-parts"
 THINGS_DIR = ROOT / "web" / "public" / "things"
 SERVICE_WORKER = ROOT / "web" / "public" / "sw.js"
 
 
-def load_generator_literal(name: str):
-    generator = ROOT / "tools" / "generate_neural_voice_assets.py"
-    tree = ast.parse(generator.read_text(encoding="utf-8"))
+def load_literal(source_file: Path, name: str):
+    tree = ast.parse(source_file.read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
             isinstance(target, ast.Name) and target.id == name for target in node.targets
         ):
             return ast.literal_eval(node.value)
-    raise AssertionError(f"{name} is missing from the audio generator")
+    raise AssertionError(f"{name} is missing from {source_file.name}")
+
+
+def load_generator_literal(name: str):
+    return load_literal(ROOT / "tools" / "generate_neural_voice_assets.py", name)
 
 
 def load_voice_items() -> list[tuple[str, str, str, str]]:
@@ -33,8 +37,9 @@ def load_voice_items() -> list[tuple[str, str, str, str]]:
 
 def main() -> None:
     ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        raise RuntimeError("ffmpeg is required")
+    ffprobe = shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        raise RuntimeError("ffmpeg and ffprobe are required")
 
     source = DATA_FILE.read_text(encoding="utf-8")
     items = load_voice_items()
@@ -69,7 +74,22 @@ def main() -> None:
         if not path.is_file() or path.stat().st_size < 100_000:
             raise AssertionError(f"Missing or unexpectedly small image atlas: {path}")
 
-    for name in ("leaf-v1.png", "../icon-64.png", "../icon-192.png", "../icon-512.png"):
+    direct_image_paths = re.findall(
+        r"directImage\('[^']+', '[^']+', '[^']+', '[^']+', '[^']+', '([^']+)'\)", source
+    )
+    cached_image_match = re.search(r"const DIRECT_IMAGE_IDS = \[(.*?)\];", service_worker_source, re.S)
+    if not cached_image_match:
+        raise AssertionError("DIRECT_IMAGE_IDS is missing from sw.js")
+    cached_image_ids = re.findall(r"'([^']+)'", cached_image_match.group(1))
+    expected_image_ids = [Path(path).stem.removesuffix("-v1") for path in direct_image_paths]
+    if set(cached_image_ids) != set(expected_image_ids):
+        raise AssertionError("Service-worker direct image list does not match game-data.ts")
+    for relative_path in direct_image_paths:
+        path = ROOT / "web" / "public" / relative_path
+        if not path.is_file() or path.stat().st_size < 1_000:
+            raise AssertionError(f"Missing or unexpectedly small direct image: {path}")
+
+    for name in ("../icon-64.png", "../icon-192.png", "../icon-512.png"):
         path = THINGS_DIR / name
         if not path.is_file() or path.stat().st_size < 1_000:
             raise AssertionError(f"Missing or unexpectedly small direct image: {path}")
@@ -127,13 +147,43 @@ def main() -> None:
     if number_pause_failures:
         raise AssertionError(f"Number pause checks failed: {number_pause_failures}")
 
+    part_generator = ROOT / "tools" / "generate_number_part_assets.py"
+    english_parts = load_literal(part_generator, "ENGLISH_PARTS")
+    chinese_parts = load_literal(part_generator, "CHINESE_PARTS")
+    for variable, expected in (("ENGLISH_NUMBER_PARTS", english_parts), ("CHINESE_NUMBER_PARTS", chinese_parts.keys())):
+        match = re.search(rf"const {variable} = \[(.*?)\];", service_worker_source, re.S)
+        if not match or set(re.findall(r"'([^']+)'", match.group(1))) != set(expected):
+            raise AssertionError(f"Service-worker {variable} does not match the number speech generator")
+    missing_parts = []
+    invalid_part_durations = []
+    for language, part_ids in (("en", english_parts), ("zh", chinese_parts.keys())):
+        for part_id in part_ids:
+            path = NUMBER_PART_AUDIO_DIR / language / f"{part_id}.mp3"
+            if not path.is_file() or path.stat().st_size < 1_000:
+                missing_parts.append(f"{language}/{part_id}.mp3")
+                continue
+            result = subprocess.run(
+                [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            duration = float(result.stdout.strip())
+            if not 0.12 <= duration <= 1.8:
+                invalid_part_durations.append((language, part_id, round(duration, 3)))
+    if missing_parts:
+        raise AssertionError(f"Missing number speech parts: {missing_parts}")
+    if invalid_part_durations:
+        raise AssertionError(f"Unexpected number speech part durations: {invalid_part_durations}")
+
     builtin_count = len(re.findall(r"(?:baseAtlas|expandedAtlas|directImage)\('", source))
     extension_count = len(re.findall(r"extension\('", source))
     print(f"PASS: {builtin_count} built-in items, {extension_count} local extension items")
     print(f"PASS: {len(voice_ids)} audio clips with two valid pauses")
     print("PASS: 21 number clips (0-20) with a valid English-Chinese pause")
+    print(f"PASS: {len(english_parts)} English and {len(chinese_parts)} Chinese local number speech parts")
     print(f"PASS: {len(cached_voice_ids)} audio clips are included in the offline cache")
-    print("PASS: local image atlases, leaf art, and application icons are present")
+    print(f"PASS: local image atlases, {len(direct_image_paths)} direct pictures, and application icons are present")
 
 
 if __name__ == "__main__":

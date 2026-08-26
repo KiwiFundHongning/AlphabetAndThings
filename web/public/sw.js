@@ -1,4 +1,4 @@
-const CACHE_NAME = 'alphabet-and-things-v7';
+const CACHE_NAME = 'alphabet-and-things-v8';
 const VOICE_IDS = [
   'apple', 'ball', 'cat', 'dog', 'egg', 'fish', 'grapes', 'hat', 'ice-cream', 'juice', 'kite',
   'lion', 'moon', 'nose', 'orange', 'panda', 'rabbit', 'sun', 'train', 'umbrella', 'whale', 'zebra',
@@ -8,9 +8,26 @@ const VOICE_IDS = [
   'mango', 'pear', 'strawberry', 'tomato', 'watermelon', 'book', 'cup', 'toothbrush', 'ant',
   'airplane', 'bread', 'butterfly', 'cake', 'camel', 'dolphin', 'door', 'fork', 'goat', 'giraffe',
   'key', 'lamp', 'milk', 'octopus', 'owl', 'penguin', 'robot', 'spoon', 'star', 'tiger', 'unicorn',
-  'watch',
+  'watch', 'bulldozer', 'road-roller', 'monster-truck', 'fire-engine', 'forklift', 'race-car',
+  'tank', 'crocodile', 'cattle', 'chicken', 'penguins', 'shark', 'blueberry', 'avocado', 'tree',
+  'flower', 'fire', 'water', 'beef', 'rice',
 ];
 const NUMBER_VALUES = Array.from({ length: 21 }, (_, value) => value);
+const DIRECT_IMAGE_IDS = [
+  'leaf', 'bulldozer', 'road-roller', 'monster-truck', 'fire-engine', 'forklift', 'race-car',
+  'airplane', 'tank', 'crocodile', 'tiger', 'cattle', 'chicken', 'giraffe', 'penguins', 'shark',
+  'blueberry', 'avocado', 'tree', 'flower', 'fire', 'water', 'milk', 'beef', 'rice',
+];
+const ENGLISH_NUMBER_PARTS = [
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen',
+  'nineteen', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety',
+  'hundred', 'thousand', 'million',
+];
+const CHINESE_NUMBER_PARTS = [
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'hundred', 'thousand', 'ten-thousand', 'hundred-million',
+];
 const CORE_ASSETS = [
   './',
   './manifest.webmanifest',
@@ -20,10 +37,12 @@ const CORE_ASSETS = [
   './og.png',
   './things/object-atlas-v2.png',
   './things/expanded-object-atlas-v1.png',
-  './things/leaf-v1.png',
   './audio/music/gentle-ocean-play.mp3',
+  ...DIRECT_IMAGE_IDS.map((id) => `./things/${id}-v1.png`),
   ...VOICE_IDS.map((id) => `./audio/voice/items/${id}.mp3`),
   ...NUMBER_VALUES.map((value) => `./audio/voice/numbers/${value}.mp3`),
+  ...ENGLISH_NUMBER_PARTS.map((id) => `./audio/voice/number-parts/en/${id}.mp3`),
+  ...CHINESE_NUMBER_PARTS.map((id) => `./audio/voice/number-parts/zh/${id}.mp3`),
 ];
 
 async function cacheApplicationShell() {

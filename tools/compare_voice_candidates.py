@@ -20,17 +20,22 @@ ENGLISH_VOICES = [
     "en-US-EmmaNeural",
     "en-US-AvaNeural",
 ]
-CHINESE_VOICES = ["zh-CN-XiaoxiaoNeural", "zh-CN-XiaoyiNeural"]
+CHINESE_VOICES = [
+    "zh-CN-XiaoxiaoNeural", "zh-CN-XiaoyiNeural",
+    "zh-CN-YunxiaNeural", "zh-CN-YunxiNeural",
+]
 ENGLISH_WORDS = [
     "Apple", "Ball", "Cat", "Dog", "Egg", "Fish", "Grapes", "Hat",
     "Ice cream", "Juice", "Kite", "Lion", "Moon", "Nose", "Orange",
     "Panda", "Rabbit", "Sun", "Train", "Umbrella", "Whale", "Zebra",
+    "Forklift", "Penguins",
 ]
 CHINESE_WORDS = [
     "苹果", "球", "猫", "狗", "鸡蛋", "鱼", "葡萄", "帽子", "冰淇淋",
     "果汁", "风筝", "狮子", "月亮", "鼻子", "橙子", "熊猫", "兔子",
     "太阳", "火车", "雨伞", "鲸鱼", "斑马",
     "挖掘机",
+    "压路机", "叉车", "鸡", "企鹅", "鲨鱼", "蓝莓", "牛油果", "火", "米饭",
 ]
 
 

@@ -7,8 +7,10 @@ import {
   CORE_ITEMS,
   DIFFICULTIES,
   EXTENSION_CATALOG,
+  MAX_CUSTOM_NUMBER,
   NUMBER_ITEMS,
   activateExtension,
+  createNumberItem,
   findExtension,
   type Difficulty,
   type ExtensionCatalogItem,
@@ -26,6 +28,7 @@ type Progress = {
   hardFailureLimit: number;
   recentItems: string[];
   customImages: Record<string, string>;
+  customNumbers: number[];
 };
 type Question = { item: GameItem; choices: string[] };
 type Screen = 'home' | 'playing' | 'complete' | 'failed' | 'parent';
@@ -38,6 +41,8 @@ const QUESTION_COUNT = 5;
 const NUMBER_QUESTIONS_PER_ROUND = 2;
 const HARD_WRONG_LIMIT = 2;
 const MAX_UPLOAD_BYTES = 6_000_000;
+const MAX_NUMBERS_PER_RANGE = 100;
+const MAX_CUSTOM_NUMBERS = 300;
 
 type PictureStyle = CSSProperties & { '--atlas-x'?: string; '--atlas-y'?: string };
 
@@ -69,7 +74,7 @@ function ThingPicture({ item, className = '' }: { item: GameItem; className?: st
 
 const emptyProgress = (): Progress => ({
   letters: {}, totalSeconds: 0, sessions: 0, volume: 0.85, musicVolume: 0.2,
-  difficulty: 'beginner', hardFailureLimit: 3, recentItems: [], customImages: {},
+  difficulty: 'beginner', hardFailureLimit: 3, recentItems: [], customImages: {}, customNumbers: [],
 });
 
 function shuffle<T>(items: T[]): T[] {
@@ -107,6 +112,9 @@ function readProgress(): Progress {
         ? stored.recentItems.filter((item): item is string => typeof item === 'string').slice(-16)
         : [],
       customImages: stored.customImages && typeof stored.customImages === 'object' ? stored.customImages : {},
+      customNumbers: Array.isArray(stored.customNumbers)
+        ? [...new Set(stored.customNumbers.filter((value): value is number => Number.isInteger(value) && value > 20 && value <= MAX_CUSTOM_NUMBER))].sort((left, right) => left - right).slice(0, MAX_CUSTOM_NUMBERS)
+        : [],
     };
   } catch {
     return emptyProgress();
@@ -130,13 +138,13 @@ function choiceCountFor(progress: Progress, item: GameItem): number {
     : stats?.attempts >= 3 && accuracy >= 0.8 ? 3 : 2;
 }
 
-function numberDistractors(value: number, count: number): string[] {
-  const candidates = shuffle(NUMBER_ITEMS.filter((item) => item.value !== value))
+function numberDistractors(value: number, count: number, numbers: GameItem[]): string[] {
+  const candidates = shuffle(numbers.filter((item) => item.value !== value))
     .sort((left, right) => Math.abs((left.value ?? 0) - value) - Math.abs((right.value ?? 0) - value));
   return candidates.slice(0, count).map((item) => item.letter);
 }
 
-function buildQuestions(progress: Progress, items: GameItem[]): Question[] {
+function buildQuestions(progress: Progress, items: GameItem[], numbers: GameItem[]): Question[] {
   const grouped = new Map<string, GameItem[]>();
   items.forEach((item) => grouped.set(item.letter, [...(grouped.get(item.letter) ?? []), item]));
   const wordQuestions = shuffle([...grouped.keys()]).slice(0, QUESTION_COUNT - NUMBER_QUESTIONS_PER_ROUND).map((letter) => {
@@ -148,12 +156,12 @@ function buildQuestions(progress: Progress, items: GameItem[]): Question[] {
     return { item, choices: shuffle([letter, ...distractors]) };
   });
 
-  const freshNumbers = NUMBER_ITEMS.filter((item) => !progress.recentItems.includes(item.id));
-  const numberPool = freshNumbers.length >= NUMBER_QUESTIONS_PER_ROUND ? freshNumbers : NUMBER_ITEMS;
+  const freshNumbers = numbers.filter((item) => !progress.recentItems.includes(item.id));
+  const numberPool = freshNumbers.length >= NUMBER_QUESTIONS_PER_ROUND ? freshNumbers : numbers;
   const numberQuestions = shuffle(numberPool).slice(0, NUMBER_QUESTIONS_PER_ROUND).map((item) => {
     const value = item.value ?? 0;
     const choiceCount = choiceCountFor(progress, item);
-    return { item, choices: shuffle([item.letter, ...numberDistractors(value, choiceCount - 1)]) };
+    return { item, choices: shuffle([item.letter, ...numberDistractors(value, choiceCount - 1, numbers)]) };
   });
 
   return shuffle([...wordQuestions, ...numberQuestions]);
@@ -168,6 +176,39 @@ function NumberDots({ value, className = '' }: { value: number; className?: stri
         : rows.map((count, row) => <span className="number-dot-row" key={row}>{Array.from({ length: count }, (_, column) => <i key={column} />)}</span>)}
     </div>
   );
+}
+
+function NumberWordPrompt({ item, className = '' }: { item: GameItem; className?: string }) {
+  return (
+    <div className={`number-word-board ${className}`.trim()} role="img" aria-label={`${item.word}，${item.chinese}`}>
+      <strong>{item.word}</strong>
+      <small>{item.chinese}</small>
+    </div>
+  );
+}
+
+function formatNumber(value: number | string): string {
+  return Number(value).toLocaleString('en-US');
+}
+
+function parseNumberEntry(input: string): { values: number[]; error?: string } {
+  const normalized = input
+    .trim()
+    .replace(/[０-９]/g, (digit) => String(digit.charCodeAt(0) - 0xfee0))
+    .replace(/[,，]/g, '');
+  const match = normalized.match(/^(\d+)(?:\s*(?:-|–|—|~|～|至)\s*(\d+))?$/);
+  if (!match) return { values: [], error: '请输入一个整数，或类似 40-50 的数字区间。' };
+  const first = Number(match[1]);
+  const second = match[2] === undefined ? first : Number(match[2]);
+  if (!Number.isSafeInteger(first) || !Number.isSafeInteger(second) || first > MAX_CUSTOM_NUMBER || second > MAX_CUSTOM_NUMBER) {
+    return { values: [], error: `当前支持 0 到 ${formatNumber(MAX_CUSTOM_NUMBER)}。` };
+  }
+  const start = Math.min(first, second);
+  const end = Math.max(first, second);
+  if (end - start + 1 > MAX_NUMBERS_PER_RANGE) {
+    return { values: [], error: `一次最多添加 ${MAX_NUMBERS_PER_RANGE} 个连续数字，请分成几次添加。` };
+  }
+  return { values: Array.from({ length: end - start + 1 }, (_, index) => start + index) };
 }
 
 function formatDuration(totalSeconds: number): string {
@@ -225,6 +266,8 @@ export default function Home() {
   const [recognizedExtension, setRecognizedExtension] = useState<ExtensionCatalogItem | null>(null);
   const [uploadLoading, setUploadLoading] = useState(false);
   const [pendingExtension, setPendingExtension] = useState<{ entry: ExtensionCatalogItem; imageDataUrl: string } | null>(null);
+  const [numberInput, setNumberInput] = useState('');
+  const [numberStatus, setNumberStatus] = useState<ExtensionStatus>(null);
 
   const progressRef = useRef<Progress>(progress);
   const sessionStartedAt = useRef(0);
@@ -232,6 +275,8 @@ export default function Home() {
   const actionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const numberKeyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const numberKeyBuffer = useRef('');
+  const narrationPauseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const narrationSequence = useRef(0);
   const pendingFailureCountRef = useRef(0);
   const narrationRef = useRef<HTMLAudioElement | null>(null);
   const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
@@ -242,6 +287,10 @@ export default function Home() {
     return imageDataUrl ? [activateExtension(entry, imageDataUrl)] : [];
   }), [progress.customImages]);
   const availableItems = useMemo(() => [...BUILTIN_ITEMS, ...customItems], [customItems]);
+  const availableNumbers = useMemo(
+    () => [...NUMBER_ITEMS, ...progress.customNumbers.map((value) => createNumberItem(value))],
+    [progress.customNumbers],
+  );
   const current = questions[questionIndex];
   const activeDifficulty = DIFFICULTIES.find((item) => item.id === progress.difficulty) ?? DIFFICULTIES[0];
 
@@ -256,6 +305,8 @@ export default function Home() {
     if (gateTimer.current) clearTimeout(gateTimer.current);
     if (actionTimer.current) clearTimeout(actionTimer.current);
     if (numberKeyTimer.current) clearTimeout(numberKeyTimer.current);
+    if (narrationPauseTimer.current) clearTimeout(narrationPauseTimer.current);
+    narrationSequence.current += 1;
     narrationRef.current?.pause();
     backgroundMusicRef.current?.pause();
   }, []);
@@ -297,6 +348,7 @@ export default function Home() {
   }, [applyMusicVolume, getBackgroundMusic]);
 
   const getPronunciation = useCallback((item: GameItem) => {
+    if (!item.audio) throw new Error(`Missing bundled narration for ${item.id}`);
     if (!voiceCacheRef.current.has(item.id)) {
       const narration = new Audio(new URL(item.audio, document.baseURI).toString());
       narration.preload = 'auto';
@@ -305,12 +357,68 @@ export default function Home() {
     return voiceCacheRef.current.get(item.id)!;
   }, []);
 
-  const playPronunciation = useCallback((item: GameItem) => {
-    narrationRef.current?.pause();
-    if (narrationRef.current) narrationRef.current.currentTime = 0;
+  const getAudioPart = useCallback((src: string) => {
+    const cacheKey = `part:${src}`;
+    if (!voiceCacheRef.current.has(cacheKey)) {
+      const narration = new Audio(new URL(src, document.baseURI).toString());
+      narration.preload = 'auto';
+      voiceCacheRef.current.set(cacheKey, narration);
+    }
+    return voiceCacheRef.current.get(cacheKey)!;
+  }, []);
+
+  const stopNarration = useCallback(() => {
+    narrationSequence.current += 1;
+    if (narrationPauseTimer.current) clearTimeout(narrationPauseTimer.current);
+    narrationPauseTimer.current = null;
+    if (narrationRef.current) {
+      narrationRef.current.onended = null;
+      narrationRef.current.onerror = null;
+      narrationRef.current.pause();
+      narrationRef.current.currentTime = 0;
+    }
     narrationRef.current = null;
     applyMusicVolume(false);
+  }, [applyMusicVolume]);
+
+  const playPronunciation = useCallback((item: GameItem) => {
+    stopNarration();
     if (progressRef.current.volume <= 0) return;
+    if (item.audioParts?.length) {
+      const sequenceId = narrationSequence.current;
+      applyMusicVolume(true);
+      const finishSequence = () => {
+        if (narrationSequence.current !== sequenceId) return;
+        narrationRef.current = null;
+        applyMusicVolume(false);
+      };
+      const playPart = (index: number) => {
+        if (narrationSequence.current !== sequenceId) return;
+        if (index >= item.audioParts!.length) {
+          finishSequence();
+          return;
+        }
+        const part = item.audioParts![index];
+        const narration = getAudioPart(part.src);
+        narration.currentTime = 0;
+        narration.volume = progressRef.current.volume;
+        narrationRef.current = narration;
+        let advanced = false;
+        const advance = () => {
+          if (advanced || narrationSequence.current !== sequenceId) return;
+          advanced = true;
+          narration.onended = null;
+          narration.onerror = null;
+          narrationRef.current = null;
+          narrationPauseTimer.current = setTimeout(() => playPart(index + 1), part.pauseAfter ?? 0);
+        };
+        narration.onended = advance;
+        narration.onerror = advance;
+        narration.play().catch(advance);
+      };
+      playPart(0);
+      return;
+    }
     const narration = getPronunciation(item);
     narration.currentTime = 0;
     narration.volume = progressRef.current.volume;
@@ -323,7 +431,7 @@ export default function Home() {
     narration.onended = restoreMusic;
     narration.onerror = restoreMusic;
     narration.play().catch(restoreMusic);
-  }, [applyMusicVolume, getPronunciation]);
+  }, [applyMusicVolume, getAudioPart, getPronunciation, stopNarration]);
 
   useEffect(() => { getBackgroundMusic().load(); }, [getBackgroundMusic]);
 
@@ -372,8 +480,8 @@ export default function Home() {
     if (actionTimer.current) clearTimeout(actionTimer.current);
     if (numberKeyTimer.current) clearTimeout(numberKeyTimer.current);
     numberKeyBuffer.current = '';
-    narrationRef.current?.pause();
-    const nextQuestions = buildQuestions(progressRef.current, availableItems);
+    stopNarration();
+    const nextQuestions = buildQuestions(progressRef.current, availableItems, availableNumbers);
     setQuestions(nextQuestions);
     saveProgress((previous) => ({ ...previous, recentItems: [...previous.recentItems, ...nextQuestions.map((question) => question.item.id)].slice(-16) }));
     setQuestionIndex(0);
@@ -396,7 +504,7 @@ export default function Home() {
     if (actionTimer.current) clearTimeout(actionTimer.current);
     if (numberKeyTimer.current) clearTimeout(numberKeyTimer.current);
     numberKeyBuffer.current = '';
-    narrationRef.current?.pause();
+    stopNarration();
     stopMusic();
     setFeedback(null);
     setScreen('home');
@@ -405,9 +513,7 @@ export default function Home() {
   const finishCorrectFeedback = useCallback(() => {
     if (actionTimer.current) clearTimeout(actionTimer.current);
     actionTimer.current = null;
-    narrationRef.current?.pause();
-    narrationRef.current = null;
-    applyMusicVolume(false);
+    stopNarration();
     if (questionIndex >= questions.length - 1) {
       addElapsedTime(true);
       stopMusic();
@@ -415,7 +521,7 @@ export default function Home() {
     } else {
       prepareQuestion(questionIndex + 1);
     }
-  }, [addElapsedTime, applyMusicVolume, prepareQuestion, questionIndex, questions.length, stopMusic]);
+  }, [addElapsedTime, prepareQuestion, questionIndex, questions.length, stopMusic, stopNarration]);
 
   const finishFailedFeedback = useCallback((failureCount = pendingFailureCountRef.current) => {
     if (actionTimer.current) clearTimeout(actionTimer.current);
@@ -510,7 +616,7 @@ export default function Home() {
         if (!/^\d$/.test(event.key)) return;
         event.preventDefault();
         if (numberKeyTimer.current) clearTimeout(numberKeyTimer.current);
-        const candidate = `${numberKeyBuffer.current}${event.key}`.slice(-2);
+        const candidate = `${numberKeyBuffer.current}${event.key}`;
         const matches = current.choices.filter((choice) => choice.startsWith(candidate));
         numberKeyBuffer.current = matches.length ? candidate : event.key;
         const exact = current.choices.find((choice) => choice === numberKeyBuffer.current);
@@ -524,7 +630,7 @@ export default function Home() {
           const delayedExact = current.choices.find((choice) => choice === numberKeyBuffer.current);
           numberKeyBuffer.current = '';
           if (delayedExact) answerQuestion(delayedExact);
-        }, 700);
+        }, 900);
         return;
       }
       const letter = event.key.toUpperCase();
@@ -553,12 +659,12 @@ export default function Home() {
     const attempts = records.reduce((total, item) => total + item.attempts, 0);
     const firstCorrect = records.reduce((total, item) => total + item.firstCorrect, 0);
     const practicedLetters = CORE_ITEMS.filter((item) => (progress.letters[item.letter]?.attempts ?? 0) > 0).length;
-    const practicedNumbers = NUMBER_ITEMS.filter((item) => (progress.letters[item.letter]?.attempts ?? 0) > 0).length;
+    const practicedNumbers = availableNumbers.filter((item) => (progress.letters[item.letter]?.attempts ?? 0) > 0).length;
     return { practicedLetters, practicedNumbers, attempts, accuracy: attempts ? Math.round((firstCorrect / attempts) * 100) : 0 };
-  }, [progress.letters]);
+  }, [availableNumbers, progress.letters]);
 
   const resetProgress = () => {
-    const reset: Progress = { ...emptyProgress(), volume: progress.volume, musicVolume: progress.musicVolume, difficulty: progress.difficulty, hardFailureLimit: progress.hardFailureLimit, customImages: progress.customImages };
+    const reset: Progress = { ...emptyProgress(), volume: progress.volume, musicVolume: progress.musicVolume, difficulty: progress.difficulty, hardFailureLimit: progress.hardFailureLimit, customImages: progress.customImages, customNumbers: progress.customNumbers };
     progressRef.current = reset;
     setProgress(reset);
     writeProgress(reset);
@@ -610,11 +716,49 @@ export default function Home() {
     });
   };
 
+  const addNumbers = () => {
+    const parsed = parseNumberEntry(numberInput);
+    if (parsed.error) {
+      setNumberStatus({ tone: 'error', message: parsed.error });
+      return;
+    }
+    const existing = new Set([...NUMBER_ITEMS.map((item) => item.value ?? 0), ...progressRef.current.customNumbers]);
+    const additions = parsed.values.filter((value) => value > 20 && !existing.has(value));
+    if (!additions.length) {
+      setNumberStatus({ tone: 'info', message: '这些数字已经在题库中，不需要重复添加。' });
+      return;
+    }
+    if (progressRef.current.customNumbers.length + additions.length > MAX_CUSTOM_NUMBERS) {
+      setNumberStatus({ tone: 'error', message: `最多保存 ${MAX_CUSTOM_NUMBERS} 个家长添加的数字，请先移除一些。` });
+      return;
+    }
+    saveProgress((previous) => ({
+      ...previous,
+      customNumbers: [...new Set([...previous.customNumbers, ...additions])].sort((left, right) => left - right),
+    }));
+    const skipped = parsed.values.length - additions.length;
+    setNumberStatus({
+      tone: 'success',
+      message: `已加入 ${additions.length} 个数字${skipped ? `，另有 ${skipped} 个已经存在` : ''}。英文、中文名称和本地读音已自动准备好。`,
+    });
+    setNumberInput('');
+  };
+
+  const removeCustomNumber = (value: number) => {
+    saveProgress((previous) => ({
+      ...previous,
+      customNumbers: previous.customNumbers.filter((candidate) => candidate !== value),
+    }));
+    setNumberStatus({ tone: 'info', message: `${formatNumber(value)} 已从题库移除，原有学习统计暂时保留。` });
+  };
+
   if (screen === 'playing' && current) {
     const isNumber = current.item.kind === 'number';
+    const numberValue = current.item.value ?? 0;
     const showVisual = progress.difficulty === 'beginner' || progress.difficulty === 'easy';
     const showPicture = !isNumber && showVisual;
-    const showDots = isNumber && showVisual;
+    const showDots = isNumber && numberValue <= 20 && showVisual;
+    const showNumberWords = isNumber && numberValue > 20 && showVisual;
     const showWords = !isNumber && progress.difficulty === 'beginner';
     const audioOnly = progress.difficulty === 'medium' || progress.difficulty === 'hard';
     return (
@@ -631,9 +775,10 @@ export default function Home() {
         </header>
 
         <section className="question-area">
-          <div className={`learning-focus ${isNumber ? 'number-focus' : ''} ${audioOnly ? 'audio-only-focus' : ''} ${(showPicture || showDots) && !showWords ? 'picture-only-focus' : ''}`}>
+          <div className={`learning-focus ${isNumber ? 'number-focus' : ''} ${showNumberWords ? 'large-number-focus' : ''} ${audioOnly ? 'audio-only-focus' : ''} ${(showPicture || showDots || showNumberWords) && !showWords ? 'picture-only-focus' : ''}`}>
             {showPicture && <ThingPicture item={current.item} className="focus-picture" />}
-            {showDots && <NumberDots value={current.item.value ?? 0} className="focus-number-dots" />}
+            {showDots && <NumberDots value={numberValue} className="focus-number-dots" />}
+            {showNumberWords && <NumberWordPrompt item={current.item} className="focus-number-words" />}
             {showWords && <div className="focus-caption"><span className="focus-word"><strong>{current.item.letter}</strong><b>{current.item.word.slice(1)}</b></span><small>{current.item.chinese}</small></div>}
             {audioOnly && <button className="listen-again-card" type="button" onClick={() => playPronunciation(current.item)}><span aria-hidden="true">🔊</span><small>点这里再听一次</small></button>}
           </div>
@@ -641,8 +786,10 @@ export default function Home() {
           <div className={`choice-grid choices-${current.choices.length}`}>
             {current.choices.map((letter) => {
               const isTarget = letter === current.item.letter;
+              const choiceLabel = isNumber ? formatNumber(letter) : letter;
+              const numberFontSize = isNumber ? Math.max(16, Math.min(100, 175 / choiceLabel.length)) : undefined;
               const classes = ['letter-choice', isNumber ? 'number-choice' : '', wrongCount > 0 && isTarget && progress.difficulty !== 'hard' ? 'hinted' : '', assist && isTarget ? 'assisted' : '', selectedLetter === letter && feedback === 'wrong' ? 'wrong-choice' : '', selectedLetter === letter && feedback === 'correct' ? 'correct-choice' : ''].filter(Boolean).join(' ');
-              return <button className={classes} type="button" key={letter} disabled={locked || (assist && !isTarget)} onClick={() => answerQuestion(letter)} aria-label={`${isNumber ? '数字' : '字母'} ${letter}`}><span>{letter}</span><small>{isNumber ? `键入 ${letter}` : `按 ${letter} 键`}</small></button>;
+              return <button className={classes} type="button" key={letter} disabled={locked || (assist && !isTarget)} onClick={() => answerQuestion(letter)} aria-label={`${isNumber ? '数字' : '字母'} ${letter}`}><span style={numberFontSize ? { fontSize: `${numberFontSize}px` } : undefined}>{choiceLabel}</span><small>{isNumber ? `键入 ${letter}` : `按 ${letter} 键`}</small></button>;
             })}
           </div>
           <div className="feedback-message" role="status" aria-live="polite">
@@ -654,7 +801,7 @@ export default function Home() {
 
         {feedback === 'wrong' && <button className="wrong-feedback-overlay" type="button" onClick={skipFeedback} aria-label="答错了，点击继续作答"><span className="wrong-mark" aria-hidden="true">×</span><span className="wrong-overlay-copy">没关系，再试一次</span></button>}
         {feedback === 'questionFailed' && <button className="wrong-feedback-overlay question-failed-overlay" type="button" onClick={skipFeedback} aria-label="本题结束，点击继续"><span className="wrong-mark soft-cross" aria-hidden="true">×</span><span className="wrong-overlay-copy">这题先休息一下</span><small>点击或按任意键继续</small></button>}
-        {feedback === 'correct' && <button className="reward-overlay" type="button" onClick={skipFeedback} aria-label="跳过正确动画，继续下一题"><div className="reward-card"><div className="reward-stars" aria-hidden="true">★ ✦ ★</div>{isNumber ? <NumberDots value={current.item.value ?? 0} className="reward-number-dots" /> : <ThingPicture item={current.item} className="reward-picture" />}<div className={`reward-word ${isNumber ? 'reward-number-answer' : ''}`}>{isNumber ? <><span className="reward-english"><strong>{current.item.letter}</strong> · {current.item.word}</span><small>{current.item.chinese}</small></> : <><span className="reward-english"><strong>{current.item.letter}</strong>{current.item.word.slice(1)}</span><small>{current.item.chinese}</small></>}</div><p>太棒了！</p><small className="skip-hint">点击或按任意键继续</small></div></button>}
+        {feedback === 'correct' && <button className="reward-overlay" type="button" onClick={skipFeedback} aria-label="跳过正确动画，继续下一题"><div className="reward-card"><div className="reward-stars" aria-hidden="true">★ ✦ ★</div>{isNumber ? (numberValue <= 20 ? <NumberDots value={numberValue} className="reward-number-dots" /> : <NumberWordPrompt item={current.item} className="reward-number-words" />) : <ThingPicture item={current.item} className="reward-picture" />}<div className={`reward-word ${isNumber ? 'reward-number-answer' : ''}`}>{isNumber ? <><span className="reward-english"><strong>{formatNumber(current.item.letter)}</strong> · {current.item.word}</span><small>{current.item.chinese}</small></> : <><span className="reward-english"><strong>{current.item.letter}</strong>{current.item.word.slice(1)}</span><small>{current.item.chinese}</small></>}</div><p>太棒了！</p><small className="skip-hint">点击或按任意键继续</small></div></button>}
       </main>
     );
   }
@@ -674,16 +821,24 @@ export default function Home() {
         <header className="parent-header"><div><p className="eyebrow">仅保存在这台设备</p><h1>家长专区</h1></div><button className="soft-button" type="button" onClick={goHome}>完成</button></header>
         <section className="summary-grid" aria-label="学习概况">
           <article><span>认识过</span><strong>{summary.practicedLetters}<small>/22</small></strong><p>个字母</p></article>
-          <article><span>数过</span><strong>{summary.practicedNumbers}<small>/21</small></strong><p>个数字</p></article>
+          <article><span>数过</span><strong>{summary.practicedNumbers}<small>/{availableNumbers.length}</small></strong><p>个数字</p></article>
           <article><span>完成练习</span><strong>{summary.attempts}</strong><p>道题</p></article>
           <article><span>首次正确率</span><strong>{summary.accuracy}<small>%</small></strong><p>不显示给孩子</p></article>
-          <article><span>学习内容</span><strong>{availableItems.length + NUMBER_ITEMS.length}</strong><p>{availableItems.length} 个物品 · 21 个数字</p></article>
+          <article><span>学习内容</span><strong>{availableItems.length + availableNumbers.length}</strong><p>{availableItems.length} 个物品 · {availableNumbers.length} 个数字</p></article>
           <article><span>练习时间</span><strong className="duration-number">{formatDuration(progress.totalSeconds)}</strong><p>{progress.sessions} 个完整小回合</p></article>
         </section>
 
         <section className="parent-panel difficulty-parent-panel"><div><h2>难度与困难模式</h2><p>困难模式同题连续错 {HARD_WRONG_LIMIT} 次，本题会先结束。</p></div><label className="hard-limit-control"><span>累计失败上限</span><input type="range" min="1" max="5" step="1" value={progress.hardFailureLimit} onChange={(event) => saveProgress((previous) => ({ ...previous, hardFailureLimit: Number(event.target.value) }))} /><strong>{progress.hardFailureLimit} 题</strong></label></section>
 
         <section className="parent-panel settings-panel"><div><h2>声音</h2><p>自然美式英语和普通话教学读音随游戏保存；背景音乐在读音时自动变轻。</p></div><div className="sound-control-stack"><label className="volume-control"><strong>读音</strong><span aria-hidden="true">🔈</span><input type="range" min="0" max="1" step="0.05" value={progress.volume} onChange={(event) => saveProgress((previous) => ({ ...previous, volume: Number(event.target.value) }))} aria-label="读音音量" /><span aria-hidden="true">🔊</span></label><label className="volume-control"><strong>音乐</strong><span aria-hidden="true">♪</span><input type="range" min="0" max="0.4" step="0.01" value={progress.musicVolume} onChange={(event) => { const musicVolume = Number(event.target.value); saveProgress((previous) => ({ ...previous, musicVolume })); if (backgroundMusicRef.current) backgroundMusicRef.current.volume = musicVolume; }} aria-label="背景音乐音量" /><span aria-hidden="true">♫</span></label></div></section>
+
+        <section className="parent-panel number-library-panel">
+          <div className="extension-heading"><div><h2>添加数字题库</h2><p>输入单个数字，或输入连续区间。21 以上不显示点阵，题目中央会自动显示英文和中文数字名称。</p></div><span className="local-badge">完全本地</span></div>
+          <div className="extension-search-row"><input value={numberInput} onChange={(event) => setNumberInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') addNumbers(); }} placeholder="例如：35 或 40-50" maxLength={25} inputMode="numeric" aria-label="输入数字或数字区间" /><button className="soft-button primary-soft-button" type="button" onClick={addNumbers}>加入数字</button></div>
+          <p className="number-limit-note">支持 0–{formatNumber(MAX_CUSTOM_NUMBER)}；一次最多添加 {MAX_NUMBERS_PER_RANGE} 个连续数字，本机最多保存 {MAX_CUSTOM_NUMBERS} 个自定义数字。</p>
+          {numberStatus && <p className={`extension-status ${numberStatus.tone}`} role="status">{numberStatus.message}</p>}
+          {progress.customNumbers.length > 0 && <div className="enabled-numbers"><h3>已添加的数字（{progress.customNumbers.length}）</h3><div className="custom-number-grid">{progress.customNumbers.map((value) => { const item = createNumberItem(value); return <article key={value}><div><strong>{formatNumber(value)}</strong><span>{item.word}</span><small>{item.chinese}</small></div><button type="button" onClick={() => playPronunciation(item)}>试听</button><button type="button" onClick={() => removeCustomNumber(value)}>移除</button></article>; })}</div></div>}
+        </section>
 
         <section className="parent-panel extension-panel">
           <div className="extension-heading"><div><h2>本地扩展词库</h2><p>输入中文或英文，由本地安全词表识别；图片由家长上传并确认。整个过程无需联网，也不会安装模型。</p></div><span className="local-badge">完全本地</span></div>
@@ -711,9 +866,9 @@ export default function Home() {
 
         <section className="parent-panel"><div className="panel-heading"><div><h2>字母学习记录</h2><p>“首次正确”只统计每道题第一次选择。</p></div></div><div className="letter-stats-grid">{CORE_ITEMS.map((item) => { const stats = progress.letters[item.letter]; const accuracy = stats?.attempts ? Math.round((stats.firstCorrect / stats.attempts) * 100) : null; return <article className="letter-stat" key={item.letter}><div className="stat-letter" style={{ background: item.color }}>{item.letter}</div><div><strong>{availableItems.filter((entry) => entry.letter === item.letter).length} 个物品</strong><p>{stats?.attempts ?? 0} 次练习 · {accuracy === null ? '尚无正确率' : `${accuracy}% 首次正确`}</p>{stats?.lastPlayed && <small>最近：{new Date(stats.lastPlayed).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</small>}</div><ThingPicture item={item} className="stat-picture" /></article>; })}</div></section>
 
-        <section className="parent-panel"><div className="panel-heading"><div><h2>数字学习记录</h2><p>0–20 会随机混入每一轮，记录规则与字母题相同。</p></div></div><div className="letter-stats-grid number-stats-grid">{NUMBER_ITEMS.map((item) => { const stats = progress.letters[item.letter]; const accuracy = stats?.attempts ? Math.round((stats.firstCorrect / stats.attempts) * 100) : null; return <article className="letter-stat number-stat" key={item.id}><div className="stat-letter" style={{ background: item.color }}>{item.letter}</div><div><strong>{item.word} · {item.chinese}</strong><p>{stats?.attempts ?? 0} 次练习 · {accuracy === null ? '尚无正确率' : `${accuracy}% 首次正确`}</p>{stats?.lastPlayed && <small>最近：{new Date(stats.lastPlayed).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</small>}</div></article>; })}</div></section>
+        <section className="parent-panel"><div className="panel-heading"><div><h2>数字学习记录</h2><p>0–20 和家长添加的数字会一起随机出题，记录规则与字母题相同。</p></div></div><div className="letter-stats-grid number-stats-grid">{availableNumbers.map((item) => { const stats = progress.letters[item.letter]; const accuracy = stats?.attempts ? Math.round((stats.firstCorrect / stats.attempts) * 100) : null; return <article className="letter-stat number-stat" key={item.id}><div className="stat-letter number-stat-letter" style={{ background: item.color }}>{formatNumber(item.letter)}</div><div><strong>{item.word} · {item.chinese}</strong><p>{stats?.attempts ?? 0} 次练习 · {accuracy === null ? '尚无正确率' : `${accuracy}% 首次正确`}</p>{stats?.lastPlayed && <small>最近：{new Date(stats.lastPlayed).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</small>}</div></article>; })}</div></section>
 
-        <section className="parent-panel privacy-panel"><div><h2>隐私与记录</h2><p>无需登录，没有服务器数据库、广告或追踪。不使用麦克风、摄像头和位置。上传图片、扩展词和学习统计都只保存在本机。</p></div>{!confirmReset ? <button className="danger-soft-button" type="button" onClick={() => setConfirmReset(true)}>清除学习记录</button> : <div className="reset-confirm"><span>确定清除学习统计吗？已加词库会保留。</span><button type="button" onClick={resetProgress}>确定清除</button><button type="button" onClick={() => setConfirmReset(false)}>取消</button></div>}</section>
+        <section className="parent-panel privacy-panel"><div><h2>隐私与记录</h2><p>无需登录，没有服务器数据库、广告或追踪。不使用麦克风、摄像头和位置。上传图片、扩展词、数字题库和学习统计都只保存在本机。</p></div>{!confirmReset ? <button className="danger-soft-button" type="button" onClick={() => setConfirmReset(true)}>清除学习记录</button> : <div className="reset-confirm"><span>确定清除学习统计吗？已加词库和数字会保留。</span><button type="button" onClick={resetProgress}>确定清除</button><button type="button" onClick={() => setConfirmReset(false)}>取消</button></div>}</section>
       </main>
     );
   }
@@ -723,9 +878,9 @@ export default function Home() {
       <div className="sun-glow" aria-hidden="true" /><div className="cloud cloud-one" aria-hidden="true" /><div className="cloud cloud-two" aria-hidden="true" />
       <header className="home-header"><div className="brand-mark" aria-label="Alphabet and Things"><span className="brand-excavator" style={{ backgroundImage: "url('icon-192.png')" }} aria-hidden="true" /></div><div className="parent-gate-wrap"><button className="grown-up-button" type="button" aria-label="家长专区，长按三秒进入" onPointerDown={beginParentHold} onPointerUp={cancelParentHold} onPointerLeave={cancelParentHold} onPointerCancel={cancelParentHold} onKeyDown={(event) => { if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) beginParentHold(); }} onKeyUp={cancelParentHold} onContextMenu={(event) => event.preventDefault()} onClick={() => setGateMessage('请长按 3 秒进入')}><span aria-hidden="true">🔒</span>家长专区</button>{gateMessage && <span className="gate-message" role="status">{gateMessage}</span>}</div></header>
       <section className="hero" aria-labelledby="game-title">
-        <div className="hero-copy"><p className="eyebrow">听一听 · 数一数 · 找一找</p><h1 id="game-title"><span>字母、数字<br />和好朋友</span><small>Alphabet &amp; Things</small></h1><p className="welcome-copy">和动物、工程车、水果一起，<br />开心认识英文字母和 0–20！</p>
+        <div className="hero-copy"><p className="eyebrow">听一听 · 数一数 · 找一找</p><h1 id="game-title"><span>字母、数字<br />和好朋友</span><small>Alphabet &amp; Things</small></h1><p className="welcome-copy">和动物、工程车、水果一起，<br />开心认识英文字母和数字！</p>
           <div className="difficulty-picker" aria-label="选择游戏难度">{DIFFICULTIES.map((difficulty) => <button key={difficulty.id} type="button" className={progress.difficulty === difficulty.id ? 'difficulty-option selected' : 'difficulty-option'} onClick={() => saveProgress((previous) => ({ ...previous, difficulty: difficulty.id }))} aria-pressed={progress.difficulty === difficulty.id}><strong>{difficulty.label}</strong><span>{difficulty.short}</span></button>)}</div>
-          <button className="start-button" type="button" onClick={startGame}><span className="play-icon" aria-hidden="true">▶</span><span>开始{activeDifficulty.label}游戏<small>LET&apos;S PLAY!</small></span></button><div className="session-note" aria-label="每轮五题，三个物品题和两个数字题"><span aria-hidden="true">⭐</span>每次 5 题 · 3 个物品＋2 个数字 · 记录只存在本机</div>
+          <button className="start-button" type="button" onClick={startGame}><span className="play-icon" aria-hidden="true">▶</span><span>开始{activeDifficulty.label}游戏<small>LET&apos;S PLAY!</small></span></button><div className="session-note" aria-label="每轮五题，三个物品题和两个数字题"><span aria-hidden="true">⭐</span>每次 5 题 · 3 个物品＋2 个数字 · 共 {availableNumbers.length} 个数字</div>
         </div>
         <div className="friends-stage" aria-label="字母与事物示例"><div className="rainbow" aria-hidden="true"><span /></div>{CORE_ITEMS.slice(0, 3).map((item, index) => <div className={`friend friend-${['apple', 'ball', 'cat'][index]}`} key={item.letter}><span className="friend-letter">{item.letter}</span><ThingPicture item={item} className="friend-thing" /></div>)}<div className="ground" aria-hidden="true"><span className="flower flower-one">✿</span><span className="flower flower-two">✿</span><span className="flower flower-three">✿</span></div></div>
       </section>

@@ -1,7 +1,7 @@
 {
   "name": "AlphabetAndThings - 字母、数字和好朋友",
   "short_name": "AlphabetAndThings",
-  "description": "含四档难度、58 个内置物品与 0–20 数字，无需登录且记录只存本机的中英双语认知小游戏。",
+  "description": "含四档难度、82 个内置物品和可由家长扩展的本地数字题库，无需登录且记录只存本机的中英双语认知小游戏。",
   "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",
