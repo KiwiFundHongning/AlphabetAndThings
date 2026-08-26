@@ -13,6 +13,7 @@ DATA_FILE = ROOT / "web" / "app" / "game-data.ts"
 AUDIO_DIR = ROOT / "web" / "public" / "audio" / "voice" / "items"
 NUMBER_AUDIO_DIR = ROOT / "web" / "public" / "audio" / "voice" / "numbers"
 NUMBER_PART_AUDIO_DIR = ROOT / "web" / "public" / "audio" / "voice" / "number-parts"
+MUSIC_FILE = ROOT / "web" / "public" / "audio" / "music" / "gentle-ocean-play.mp3"
 THINGS_DIR = ROOT / "web" / "public" / "things"
 SERVICE_WORKER = ROOT / "web" / "public" / "sw.js"
 
@@ -95,6 +96,7 @@ def main() -> None:
             raise AssertionError(f"Missing or unexpectedly small direct image: {path}")
 
     pause_failures = []
+    loudness_failures = []
     missing = []
     for item_id in voice_ids:
         path = AUDIO_DIR / f"{item_id}.mp3"
@@ -102,7 +104,7 @@ def main() -> None:
             missing.append(path.name)
             continue
         result = subprocess.run(
-            [ffmpeg, "-hide_banner", "-i", str(path), "-af", "silencedetect=noise=-45dB:d=0.25", "-f", "null", "NUL"],
+            [ffmpeg, "-hide_banner", "-i", str(path), "-af", "silencedetect=noise=-45dB:d=0.25,volumedetect", "-f", "null", "NUL"],
             capture_output=True,
             text=True,
             errors="replace",
@@ -113,13 +115,24 @@ def main() -> None:
         ]
         if len(durations) < 2 or not (0.75 <= durations[0] <= 0.95) or not (0.40 <= durations[1] <= 0.60):
             pause_failures.append((item_id, durations[:2]))
+        mean_match = re.search(r"mean_volume:\s*(-?[0-9.]+) dB", result.stderr)
+        peak_match = re.search(r"max_volume:\s*(-?[0-9.]+) dB", result.stderr)
+        if not mean_match or not peak_match:
+            loudness_failures.append((item_id, "missing measurement"))
+        else:
+            mean_db, peak_db = float(mean_match.group(1)), float(peak_match.group(1))
+            if not (-20.5 <= mean_db <= -12.5 and -2.0 <= peak_db <= -0.1):
+                loudness_failures.append((item_id, round(mean_db, 1), round(peak_db, 1)))
 
     if missing:
         raise AssertionError(f"Missing audio: {missing}")
     if pause_failures:
         raise AssertionError(f"Pause checks failed: {pause_failures}")
+    if loudness_failures:
+        raise AssertionError(f"Voice loudness checks failed: {loudness_failures}")
 
     number_pause_failures = []
+    number_loudness_failures = []
     missing_numbers = []
     expected_values = list(range(21))
     if [value for value, *_ in numbers] != expected_values:
@@ -130,7 +143,7 @@ def main() -> None:
             missing_numbers.append(path.name)
             continue
         result = subprocess.run(
-            [ffmpeg, "-hide_banner", "-i", str(path), "-af", "silencedetect=noise=-45dB:d=0.25", "-f", "null", "NUL"],
+            [ffmpeg, "-hide_banner", "-i", str(path), "-af", "silencedetect=noise=-45dB:d=0.25,volumedetect", "-f", "null", "NUL"],
             capture_output=True,
             text=True,
             errors="replace",
@@ -141,11 +154,37 @@ def main() -> None:
         ]
         if not durations or not (0.40 <= durations[0] <= 0.60):
             number_pause_failures.append((value, durations[:1]))
+        mean_match = re.search(r"mean_volume:\s*(-?[0-9.]+) dB", result.stderr)
+        peak_match = re.search(r"max_volume:\s*(-?[0-9.]+) dB", result.stderr)
+        if not mean_match or not peak_match:
+            number_loudness_failures.append((value, "missing measurement"))
+        else:
+            mean_db, peak_db = float(mean_match.group(1)), float(peak_match.group(1))
+            if not (-19.5 <= mean_db <= -11.0 and -2.0 <= peak_db <= -0.1):
+                number_loudness_failures.append((value, round(mean_db, 1), round(peak_db, 1)))
 
     if missing_numbers:
         raise AssertionError(f"Missing number audio: {missing_numbers}")
     if number_pause_failures:
         raise AssertionError(f"Number pause checks failed: {number_pause_failures}")
+    if number_loudness_failures:
+        raise AssertionError(f"Number loudness checks failed: {number_loudness_failures}")
+
+    music_result = subprocess.run(
+        [ffmpeg, "-hide_banner", "-i", str(MUSIC_FILE), "-af", "volumedetect", "-f", "null", "NUL"],
+        capture_output=True,
+        text=True,
+        errors="replace",
+        check=True,
+    )
+    music_mean_match = re.search(r"mean_volume:\s*(-?[0-9.]+) dB", music_result.stderr)
+    music_peak_match = re.search(r"max_volume:\s*(-?[0-9.]+) dB", music_result.stderr)
+    if not music_mean_match or not music_peak_match:
+        raise AssertionError("Background music loudness could not be measured")
+    music_mean = float(music_mean_match.group(1))
+    music_peak = float(music_peak_match.group(1))
+    if not (-19.5 <= music_mean <= -16.0 and -6.0 <= music_peak <= -2.0):
+        raise AssertionError(f"Background music loudness is outside the safe target: {(music_mean, music_peak)}")
 
     part_generator = ROOT / "tools" / "generate_number_part_assets.py"
     english_parts = load_literal(part_generator, "ENGLISH_PARTS")
@@ -180,6 +219,7 @@ def main() -> None:
     extension_count = len(re.findall(r"extension\('", source))
     print(f"PASS: {builtin_count} built-in items, {extension_count} local extension items")
     print(f"PASS: {len(voice_ids)} audio clips with two valid pauses")
+    print("PASS: narration and music loudness are raised and peak-safe")
     print("PASS: 21 number clips (0-20) with a valid English-Chinese pause")
     print(f"PASS: {len(english_parts)} English and {len(chinese_parts)} Chinese local number speech parts")
     print(f"PASS: {len(cached_voice_ids)} audio clips are included in the offline cache")

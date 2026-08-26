@@ -1,4 +1,4 @@
-const CACHE_NAME = 'alphabet-and-things-v8';
+const CACHE_NAME = 'alphabet-and-things-v9';
 const VOICE_IDS = [
   'apple', 'ball', 'cat', 'dog', 'egg', 'fish', 'grapes', 'hat', 'ice-cream', 'juice', 'kite',
   'lion', 'moon', 'nose', 'orange', 'panda', 'rabbit', 'sun', 'train', 'umbrella', 'whale', 'zebra',

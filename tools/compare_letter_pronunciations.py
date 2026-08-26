@@ -15,20 +15,23 @@ from faster_whisper import WhisperModel
 
 
 VOICES = [
-    "en-US-AvaNeural",
+    "en-US-AvaMultilingualNeural",
     "en-US-JennyNeural",
-    "en-US-AnaNeural",
 ]
-RATES = ["-4%", "-12%", "-18%"]
+RATES = ["-25%", "-35%", "-45%"]
 SPELLINGS = {
-    "A": ["A", "A."],
-    "E": ["E", "E."],
-    "P": ["P", "P."],
+    "A": ["A"],
+    "E": ["E"],
+    "P": ["P"],
+    "R": ["R"],
+    "W": ["W"],
 }
 EXPECTED = {
     "A": {"a", "ay", "aye"},
     "E": {"e"},
     "P": {"p", "pea", "pee"},
+    "R": {"r", "are"},
+    "W": {"w", "doubleu", "doubleyou"},
 }
 
 

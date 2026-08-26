@@ -73,7 +73,7 @@ function ThingPicture({ item, className = '' }: { item: GameItem; className?: st
 }
 
 const emptyProgress = (): Progress => ({
-  letters: {}, totalSeconds: 0, sessions: 0, volume: 0.85, musicVolume: 0.2,
+  letters: {}, totalSeconds: 0, sessions: 0, volume: 0.9, musicVolume: 0.3,
   difficulty: 'beginner', hardFailureLimit: 3, recentItems: [], customImages: {}, customNumbers: [],
 });
 
@@ -104,8 +104,8 @@ function readProgress(): Progress {
       letters: stored.letters ?? {},
       totalSeconds: clampInteger(stored.totalSeconds, 0, 0, Number.MAX_SAFE_INTEGER),
       sessions: clampInteger(stored.sessions, 0, 0, Number.MAX_SAFE_INTEGER),
-      volume: typeof stored.volume === 'number' ? Math.min(1, Math.max(0, stored.volume)) : 0.85,
-      musicVolume: typeof stored.musicVolume === 'number' ? Math.min(0.4, Math.max(0, stored.musicVolume)) : 0.2,
+      volume: typeof stored.volume === 'number' ? Math.min(1, Math.max(0, stored.volume)) : 0.9,
+      musicVolume: typeof stored.musicVolume === 'number' ? Math.min(0.75, Math.max(0, stored.musicVolume)) : 0.3,
       difficulty,
       hardFailureLimit: clampInteger(stored.hardFailureLimit, 3, 1, 5),
       recentItems: Array.isArray(stored.recentItems)
@@ -321,7 +321,7 @@ export default function Home() {
   }, []);
 
   const applyMusicVolume = useCallback((ducked = false) => {
-    if (backgroundMusicRef.current) backgroundMusicRef.current.volume = Math.min(1, Math.max(0, progressRef.current.musicVolume * (ducked ? 0.18 : 1)));
+    if (backgroundMusicRef.current) backgroundMusicRef.current.volume = Math.min(1, Math.max(0, progressRef.current.musicVolume * (ducked ? 0.12 : 1)));
   }, []);
 
   const stopMusic = useCallback(() => {
@@ -441,7 +441,7 @@ export default function Home() {
     if (!AudioContextClass) return;
     const context = new AudioContextClass();
     const gain = context.createGain();
-    gain.gain.setValueAtTime(progressRef.current.volume * (kind === 'wrong' ? 0.18 : 0.12), context.currentTime);
+    gain.gain.setValueAtTime(progressRef.current.volume * (kind === 'wrong' ? 0.26 : 0.18), context.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.55);
     gain.connect(context.destination);
     (kind === 'correct' ? [523.25, 659.25, 783.99] : [330, 294]).forEach((frequency, index) => {
@@ -830,7 +830,7 @@ export default function Home() {
 
         <section className="parent-panel difficulty-parent-panel"><div><h2>难度与困难模式</h2><p>困难模式同题连续错 {HARD_WRONG_LIMIT} 次，本题会先结束。</p></div><label className="hard-limit-control"><span>累计失败上限</span><input type="range" min="1" max="5" step="1" value={progress.hardFailureLimit} onChange={(event) => saveProgress((previous) => ({ ...previous, hardFailureLimit: Number(event.target.value) }))} /><strong>{progress.hardFailureLimit} 题</strong></label></section>
 
-        <section className="parent-panel settings-panel"><div><h2>声音</h2><p>自然美式英语和普通话教学读音随游戏保存；背景音乐在读音时自动变轻。</p></div><div className="sound-control-stack"><label className="volume-control"><strong>读音</strong><span aria-hidden="true">🔈</span><input type="range" min="0" max="1" step="0.05" value={progress.volume} onChange={(event) => saveProgress((previous) => ({ ...previous, volume: Number(event.target.value) }))} aria-label="读音音量" /><span aria-hidden="true">🔊</span></label><label className="volume-control"><strong>音乐</strong><span aria-hidden="true">♪</span><input type="range" min="0" max="0.4" step="0.01" value={progress.musicVolume} onChange={(event) => { const musicVolume = Number(event.target.value); saveProgress((previous) => ({ ...previous, musicVolume })); if (backgroundMusicRef.current) backgroundMusicRef.current.volume = musicVolume; }} aria-label="背景音乐音量" /><span aria-hidden="true">♫</span></label></div></section>
+        <section className="parent-panel settings-panel"><div><h2>声音</h2><p>清晰美式英语和标准普通话教学读音随游戏保存；背景音乐在读音时自动变轻。</p></div><div className="sound-control-stack"><label className="volume-control"><strong>读音</strong><span aria-hidden="true">🔈</span><input type="range" min="0" max="1" step="0.05" value={progress.volume} onChange={(event) => saveProgress((previous) => ({ ...previous, volume: Number(event.target.value) }))} aria-label="读音音量" /><span aria-hidden="true">🔊</span></label><label className="volume-control"><strong>音乐</strong><span aria-hidden="true">♪</span><input type="range" min="0" max="0.75" step="0.01" value={progress.musicVolume} onChange={(event) => { const musicVolume = Number(event.target.value); saveProgress((previous) => ({ ...previous, musicVolume })); if (backgroundMusicRef.current) backgroundMusicRef.current.volume = musicVolume; }} aria-label="背景音乐音量" /><span aria-hidden="true">♫</span></label></div></section>
 
         <section className="parent-panel number-library-panel">
           <div className="extension-heading"><div><h2>添加数字题库</h2><p>输入单个数字，或输入连续区间。21 以上不显示点阵，题目中央会自动显示英文和中文数字名称。</p></div><span className="local-badge">完全本地</span></div>

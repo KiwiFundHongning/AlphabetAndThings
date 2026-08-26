@@ -2,16 +2,14 @@
 
 ## Prerecorded neural voice assets
 
-Most bundled English word clips were generated during development with the
-Apache-2.0-licensed Kokoro 82M model (`af_heart`, with focused short-word voice
-overrides). Edge neural voices are used for isolated letter names, Mandarin,
-and a small number of short English clarity fallbacks. The game contains only
-the resulting MP3 files and does not contact a speech service while it is
-played. Neither Kokoro nor the MIT-licensed `edge-tts` helper is shipped in the
-playable folder.
+Bundled clips were generated during development with Microsoft neural voices:
+the Ava multilingual American-English voice for most words and numbers,
+selected Microsoft clarity fallbacks for a few easily confused short words,
+tested Jenny/Ava voices for isolated letter names, and the Xiaoxiao
+standard-Mandarin voice. The game contains only the resulting normalized MP3
+files and does not contact a speech service while it is played. The
+MIT-licensed `edge-tts` build helper is not shipped in the playable folder.
 
-- Kokoro model: https://huggingface.co/hexgrad/Kokoro-82M
-- Kokoro voices: https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md
 - Voice support reference: https://learn.microsoft.com/azure/ai-services/speech-service/language-support
 - edge-tts: https://github.com/rany2/edge-tts
 

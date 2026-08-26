@@ -15,10 +15,17 @@ from faster_whisper import WhisperModel
 
 
 ENGLISH_VOICES = [
-    "en-US-JennyNeural",
-    "en-US-AriaNeural",
-    "en-US-EmmaNeural",
+    "en-US-AnaNeural",
+    "en-US-AvaMultilingualNeural",
+    "en-US-EmmaMultilingualNeural",
+    "en-US-AndrewMultilingualNeural",
     "en-US-AvaNeural",
+    "en-US-AriaNeural",
+    "en-US-JennyNeural",
+    "en-US-MichelleNeural",
+    "en-US-BrianMultilingualNeural",
+    "en-US-RogerNeural",
+    "en-US-ChristopherNeural",
 ]
 CHINESE_VOICES = [
     "zh-CN-XiaoxiaoNeural", "zh-CN-XiaoyiNeural",
@@ -28,14 +35,16 @@ ENGLISH_WORDS = [
     "Apple", "Ball", "Cat", "Dog", "Egg", "Fish", "Grapes", "Hat",
     "Ice cream", "Juice", "Kite", "Lion", "Moon", "Nose", "Orange",
     "Panda", "Rabbit", "Sun", "Train", "Umbrella", "Whale", "Zebra",
-    "Forklift", "Penguins",
+    "Bee", "Rabbit", "Excavator", "Bulldozer", "Road roller",
+    "Pig", "Beef", "Ship", "Mango", "Book", "Key", "Lamp",
+    "Forklift", "Penguins", "Fire engine", "Police car", "Garbage truck",
 ]
 CHINESE_WORDS = [
     "苹果", "球", "猫", "狗", "鸡蛋", "鱼", "葡萄", "帽子", "冰淇淋",
     "果汁", "风筝", "狮子", "月亮", "鼻子", "橙子", "熊猫", "兔子",
     "太阳", "火车", "雨伞", "鲸鱼", "斑马",
-    "挖掘机",
-    "压路机", "叉车", "鸡", "企鹅", "鲨鱼", "蓝莓", "牛油果", "火", "米饭",
+    "挖掘机", "推土机", "压路机", "叉车", "鸡", "企鹅", "鲨鱼",
+    "蓝莓", "牛油果", "火", "水", "米饭",
 ]
 
 

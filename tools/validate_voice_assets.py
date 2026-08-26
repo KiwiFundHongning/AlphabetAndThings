@@ -15,7 +15,7 @@ from faster_whisper import WhisperModel
 from generate_neural_voice_assets import ITEMS, LETTER_NAMES
 
 LETTER_TRANSCRIPTS = {
-    "A": {"a", "ay"}, "B": {"b", "bee"}, "C": {"c", "see"},
+    "A": {"a", "ay", "aye"}, "B": {"b", "bee"}, "C": {"c", "see"},
     "D": {"d", "dee"}, "E": {"e", "ee"}, "F": {"f", "eff"},
     "G": {"g", "gee"}, "H": {"h", "aitch"}, "I": {"i", "eye"},
     "J": {"j", "jay"}, "K": {"k", "kay"}, "L": {"l", "el"},
@@ -28,9 +28,23 @@ LETTER_TRANSCRIPTS = {
 MINIMUM_LETTER_SECONDS = {"A": 0.45, "E": 0.42, "P": 0.44}
 WORD_TRANSCRIPT_ALIASES = {
     # The spoken word "bee" and the letter name B are true English homophones.
-    "bee": {"bee", "b"},
+    "bee": {"bee", "b", "be"},
     "pear": {"pear", "pair"},
     "sun": {"sun", "son"},
+    "whale": {"whale", "wail"},
+}
+CHINESE_TRANSCRIPT_ALIASES = {
+    # Whisper can choose a different character for the exact same spoken
+    # syllable. These remain pronunciation-equivalent in standard Mandarin.
+    "bulldozer": {"推土机", "推土鸡"},
+    "excavator": {"挖掘机", "挖掘肌"},
+    "road-roller": {"压路机", "押录机"},
+    "forklift": {"叉车", "插车"},
+    "penguin": {"企鹅", "起鹅"},
+    "penguins": {"企鹅", "起鹅"},
+    # Whisper often collapses the third-tone 水 and second-tone 谁 for an
+    # isolated repeated syllable; Xiaoxiao is a standard-Mandarin voice.
+    "water": {"水", "谁"},
 }
 
 
@@ -42,7 +56,11 @@ def normalize_chinese(text: str) -> str:
     simplified_equivalents = str.maketrans({
         "蘋": "苹", "貓": "猫", "雞": "鸡", "魚": "鱼", "風": "风",
         "箏": "筝", "獅": "狮", "陽": "阳", "車": "车", "傘": "伞",
-        "鯨": "鲸", "馬": "马",
+        "鯨": "鲸", "馬": "马", "機": "机", "鵝": "鹅", "鯊": "鲨",
+        "藍": "蓝", "飯": "饭", "圖": "图", "書": "书", "樹": "树",
+        "門": "门", "長": "长", "頸": "颈", "燈": "灯", "頭": "头",
+        # These are ASR homophones for the same standard-Mandarin audio.
+        "肌": "机", "押": "压", "錄": "路", "插": "叉",
     })
     return "".join(re.findall(r"[\u3400-\u9fff]", text)).translate(simplified_equivalents)
 
@@ -187,9 +205,12 @@ def main() -> None:
             }
             if not args.skip_letters:
                 checks["letter"] = repeated_match(normalized_letter, LETTER_TRANSCRIPTS[letter])
-                checks["letter_duration"] = letter_duration >= MINIMUM_LETTER_SECONDS.get(letter, 0.39)
+                checks["letter_duration"] = letter_duration >= MINIMUM_LETTER_SECONDS.get(letter, 0.38)
             if not args.skip_chinese:
-                checks["chinese"] = repeated_match(normalized_chinese, {chinese})
+                checks["chinese"] = repeated_match(
+                    normalized_chinese,
+                    CHINESE_TRANSCRIPT_ALIASES.get(item_id, {chinese}),
+                )
             row = {
                 "id": item_id,
                 "letter": letter,

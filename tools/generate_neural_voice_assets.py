@@ -9,51 +9,40 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
-
-import edge_tts
-
 
 LETTER_VOICE = "en-US-JennyNeural"
+ENGLISH_WORD_VOICE = "en-US-AvaMultilingualNeural"
 CHINESE_VOICE = "zh-CN-XiaoxiaoNeural"
-NUMBER_CHINESE_VOICE = "zh-CN-YunxiaNeural"
-LETTER_RATE = "-18%"
-KOKORO_REPO = "hexgrad/Kokoro-82M"
-KOKORO_VOICE = "af_heart"
-KOKORO_SPEED = 0.9
-KOKORO_WORD_VOICE_OVERRIDES = {
-    # Focused ASR comparisons found these voices articulate the short word more
-    # clearly while preserving the same warm American-English teaching style.
-    "ball": "af_bella",
-    "book": "af_sarah",
-    "cup": "af_bella",
-    "fork": "af_bella",
-    "ship": "af_nicole",
+NUMBER_CHINESE_VOICE = "zh-CN-XiaoxiaoNeural"
+LETTER_RATE = "-35%"
+LETTER_VOICE_OVERRIDES = {
+    # Ava produces the clearest tested A and P; Jenny is more reliable for
+    # other isolated letter names such as E, R, and W.
+    "A": "en-US-AvaMultilingualNeural",
+    "P": "en-US-AvaMultilingualNeural",
 }
-EDGE_ENGLISH_WORD_VOICE = "en-US-JennyNeural"
-EDGE_ENGLISH_WORD_IDS = {"fish", "forklift", "penguins"}
-CHINESE_VOICE_OVERRIDES = {
-    # Focused offline recognition checks choose the clearest standard-Mandarin
-    # reading for short new terms while keeping a gentle, youthful tone.
-    "bulldozer": "zh-CN-YunxiaNeural",
-    "road-roller": "zh-CN-YunxiaNeural",
-    "fire-engine": "zh-CN-YunxiaNeural",
-    "forklift": "zh-CN-YunxiaNeural",
-    "tank": "zh-CN-YunxiaNeural",
-    "crocodile": "zh-CN-YunxiaNeural",
-    "cattle": "zh-CN-YunxiaNeural",
-    "chicken": "zh-CN-YunxiaNeural",
-    "penguins": "zh-CN-XiaoyiNeural",
-    "shark": "zh-CN-XiaoyiNeural",
-    "flower": "zh-CN-YunxiaNeural",
-    "water": "zh-CN-YunxiaNeural",
-    "beef": "zh-CN-YunxiaNeural",
+LETTER_RATE_OVERRIDES = {"A": "-25%", "E": "-40%", "P": "-45%"}
+ENGLISH_WORD_RATE = "-4%"
+CHINESE_RATE = "-8%"
+LETTER_TEMPO = 1.0
+ENGLISH_WORD_VOICE_OVERRIDES = {
+    # Focused repeated-ASR comparisons choose voices that retain the clearest
+    # short vowel and final consonant for these easily confused preschool words.
+    "cat": "en-US-AvaNeural",
+    "hat": "en-US-EmmaMultilingualNeural",
+    "whale": "en-US-EmmaMultilingualNeural",
+    "pig": "en-US-AvaNeural",
+    "beef": "en-US-EmmaMultilingualNeural",
+    "ship": "en-US-EmmaMultilingualNeural",
+    "mango": "en-US-AndrewMultilingualNeural",
+    "book": "en-US-MichelleNeural",
+    "key": "en-US-AndrewMultilingualNeural",
+    "lamp": "en-US-AndrewMultilingualNeural",
 }
-EDGE_ENGLISH_NUMBER_VOICE = "en-US-AvaNeural"
-EDGE_ENGLISH_NUMBER_VALUES = {2, 5, 6, 8}
 LETTER_NAMES = {
     letter: letter for letter in "ABCDEFGHIJKLMNOPRSTUWZ"
 }
+LETTER_SPEECH_TEXT = LETTER_NAMES
 
 # id, letter, English word, Simplified Chinese word
 ITEMS = [
@@ -146,22 +135,11 @@ async def synthesize(
     semaphore: asyncio.Semaphore,
     rate: str | None = None,
 ) -> None:
+    import edge_tts
+
     async with semaphore:
         speech_rate = rate or ("-10%" if voice == CHINESE_VOICE else "-4%")
         await edge_tts.Communicate(text, voice, rate=speech_rate, volume="+0%").save(str(destination))
-
-
-def synthesize_kokoro(text: str, pipeline: Any, destination: Path, voice: str = KOKORO_VOICE) -> None:
-    """Create natural American-English word audio with the build-time-only model."""
-    import numpy as np
-    import soundfile as sf
-
-    chunks = list(pipeline(f"{text}.", voice=voice, speed=KOKORO_SPEED))
-    audio_parts = [np.asarray(chunk.audio, dtype=np.float32) for chunk in chunks]
-    if not audio_parts:
-        raise RuntimeError(f"Kokoro returned no audio for {text}")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    sf.write(destination, np.concatenate(audio_parts), 24_000)
 
 
 def combine_segments(
@@ -172,31 +150,25 @@ def combine_segments(
     destination: Path,
     letter_word_pause: float,
     word_chinese_pause: float,
+    letter_tempo: float,
 ) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    edge_trim = (
+    speech_filter = (
         "aresample=24000,aformat=sample_fmts=fltp:channel_layouts=mono,"
+        "silenceremove=start_periods=1:start_duration=0.01:start_threshold=-65dB:"
+        "start_silence=0.08,"
         "areverse,silenceremove=start_periods=1:start_duration=0.05:"
-        "start_threshold=-60dB,areverse"
+        "start_threshold=-65dB:start_silence=0.06,areverse"
     )
-    kokoro_trim = (
-        "aresample=24000,aformat=sample_fmts=fltp:channel_layouts=mono,"
-        "silenceremove=start_periods=1:start_duration=0.02:start_threshold=-58dB,"
-        "areverse,silenceremove=start_periods=1:start_duration=0.02:"
-        "start_threshold=-58dB,areverse"
-    )
-    word_trim = edge_trim if word.suffix.lower() == ".mp3" else kokoro_trim
-    effective_letter_pause = max(0, letter_word_pause - (0.22 if word.suffix.lower() == ".mp3" else 0))
     filters = (
-        # Jenny reads isolated uppercase letters reliably. A small tempo stretch
-        # keeps short long-vowel names such as E and P clear without changing pitch.
-        f"[0:a]{edge_trim},atempo=0.75[letter];[1:a]{word_trim}[word];[2:a]{edge_trim}[chinese];"
-        f"anullsrc=r=24000:cl=mono:d={effective_letter_pause:.3f}[letter_pause];"
+        f"[0:a]{speech_filter},atempo={letter_tempo:.3f},"
+        "loudnorm=I=-14:TP=-1.5:LRA=5[letter];"
+        f"[1:a]{speech_filter},loudnorm=I=-14:TP=-1.5:LRA=5[word];"
+        f"[2:a]{speech_filter},loudnorm=I=-14:TP=-1.5:LRA=5[chinese];"
+        f"anullsrc=r=24000:cl=mono:d={letter_word_pause:.3f}[letter_pause];"
         f"anullsrc=r=24000:cl=mono:d={word_chinese_pause:.3f}[chinese_pause];"
         "[letter][letter_pause][word][chinese_pause][chinese]"
-        # Edge voice files are already level-matched. Avoid a second loudness
-        # transform because it can blur very short Mandarin syllable endings.
-        "concat=n=5:v=0:a=1[out]"
+        "concat=n=5:v=0:a=1,alimiter=limit=0.84[out]"
     )
     subprocess.run(
         [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(letter),
@@ -214,21 +186,18 @@ def combine_number_segments(
     language_pause: float,
 ) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    kokoro_trim = (
+    speech_filter = (
         "aresample=24000,aformat=sample_fmts=fltp:channel_layouts=mono,"
-        "silenceremove=start_periods=1:start_duration=0.02:start_threshold=-58dB,"
-        "areverse,silenceremove=start_periods=1:start_duration=0.02:"
-        "start_threshold=-58dB,areverse"
-    )
-    edge_trim = (
-        "aresample=24000,aformat=sample_fmts=fltp:channel_layouts=mono,"
+        "silenceremove=start_periods=1:start_duration=0.01:start_threshold=-65dB:"
+        "start_silence=0.08,"
         "areverse,silenceremove=start_periods=1:start_duration=0.05:"
-        "start_threshold=-60dB,areverse"
+        "start_threshold=-65dB:start_silence=0.06,areverse"
     )
     filters = (
-        f"[0:a]{kokoro_trim}[english];[1:a]{edge_trim}[chinese];"
+        f"[0:a]{speech_filter},loudnorm=I=-14:TP=-1.5:LRA=5[english];"
+        f"[1:a]{speech_filter},loudnorm=I=-14:TP=-1.5:LRA=5[chinese];"
         f"anullsrc=r=24000:cl=mono:d={language_pause:.3f}[pause];"
-        "[english][pause][chinese]concat=n=3:v=0:a=1[out]"
+        "[english][pause][chinese]concat=n=3:v=0:a=1,alimiter=limit=0.84[out]"
     )
     subprocess.run(
         [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(english),
@@ -248,23 +217,21 @@ async def generate(
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg is required to assemble the narration clips")
-    try:
-        from kokoro import KPipeline
-    except ImportError as error:
-        raise RuntimeError(
-            "Kokoro build dependencies are missing. Install them outside the shared game folder."
-        ) from error
-
     output.mkdir(parents=True, exist_ok=True)
     number_output.mkdir(parents=True, exist_ok=True)
     semaphore = asyncio.Semaphore(6)
-    pipeline = KPipeline(lang_code="a", repo_id=KOKORO_REPO)
 
     with tempfile.TemporaryDirectory(prefix="alphabet-neural-voice-") as temp_dir:
         temp_root = Path(temp_dir)
         letter_files = {letter: temp_root / f"letter-{letter.lower()}.mp3" for letter in LETTER_NAMES}
         await asyncio.gather(*[
-            synthesize(LETTER_NAMES[letter], LETTER_VOICE, path, semaphore, LETTER_RATE)
+            synthesize(
+                LETTER_SPEECH_TEXT[letter],
+                LETTER_VOICE_OVERRIDES.get(letter, LETTER_VOICE),
+                path,
+                semaphore,
+                LETTER_RATE_OVERRIDES.get(letter, LETTER_RATE),
+            )
             for letter, path in letter_files.items()
         ])
 
@@ -272,18 +239,23 @@ async def generate(
         jobs = []
         selected_items = [item for item in ITEMS if selected_ids is None or item[0] in selected_ids]
         for item_id, letter, word, chinese in selected_items:
-            word_file = temp_root / f"{item_id}-word.{'mp3' if item_id in EDGE_ENGLISH_WORD_IDS else 'wav'}"
+            word_file = temp_root / f"{item_id}-word.mp3"
             chinese_file = temp_root / f"{item_id}-zh.mp3"
             sources.append((item_id, letter, word, chinese, word_file, chinese_file))
             jobs.append(synthesize(
                 f"{chinese}。",
-                CHINESE_VOICE_OVERRIDES.get(item_id, CHINESE_VOICE),
+                CHINESE_VOICE,
                 chinese_file,
                 semaphore,
-                "-10%",
+                CHINESE_RATE,
             ))
-            if item_id in EDGE_ENGLISH_WORD_IDS:
-                jobs.append(synthesize(word, EDGE_ENGLISH_WORD_VOICE, word_file, semaphore))
+            jobs.append(synthesize(
+                f"{word}.",
+                ENGLISH_WORD_VOICE_OVERRIDES.get(item_id, ENGLISH_WORD_VOICE),
+                word_file,
+                semaphore,
+                ENGLISH_WORD_RATE,
+            ))
 
         selected_numbers = [
             item for item in NUMBERS
@@ -291,33 +263,19 @@ async def generate(
         ]
         number_sources: list[tuple[int, str, str, Path, Path]] = []
         for value, english, chinese in selected_numbers:
-            english_file = temp_root / f"number-{value}-en.{'mp3' if value in EDGE_ENGLISH_NUMBER_VALUES else 'wav'}"
+            english_file = temp_root / f"number-{value}-en.mp3"
             chinese_file = temp_root / f"number-{value}-zh.mp3"
             number_sources.append((value, english, chinese, english_file, chinese_file))
-            jobs.append(synthesize(f"{chinese}。", NUMBER_CHINESE_VOICE, chinese_file, semaphore, "-10%"))
-            if value in EDGE_ENGLISH_NUMBER_VALUES:
-                jobs.append(synthesize(f"{english}.", EDGE_ENGLISH_NUMBER_VOICE, english_file, semaphore, "-8%"))
+            jobs.append(synthesize(f"{chinese}。", NUMBER_CHINESE_VOICE, chinese_file, semaphore, CHINESE_RATE))
+            jobs.append(synthesize(f"{english}.", ENGLISH_WORD_VOICE, english_file, semaphore, ENGLISH_WORD_RATE))
 
         await asyncio.gather(*jobs)
-
-        # Kokoro runs locally at build time. The model and Python packages are not
-        # copied into the game, only the compact final MP3 files are shared.
-        for item_id, _, word, _, word_file, _ in sources:
-            if item_id in EDGE_ENGLISH_WORD_IDS:
-                continue
-            synthesize_kokoro(
-                word, pipeline, word_file,
-                KOKORO_WORD_VOICE_OVERRIDES.get(item_id, KOKORO_VOICE),
-            )
-        for value, english, _, english_file, _ in number_sources:
-            if value in EDGE_ENGLISH_NUMBER_VALUES:
-                continue
-            synthesize_kokoro(english, pipeline, english_file)
 
         for item_id, letter, word, chinese, word_file, chinese_file in sources:
             combine_segments(
                 ffmpeg, letter_files[letter], word_file, chinese_file, output / f"{item_id}.mp3",
                 letter_word_pause, word_chinese_pause,
+                LETTER_TEMPO,
             )
             print(f"voice: {item_id:16} {letter}  {word}  {chinese}", flush=True)
 
@@ -335,10 +293,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--number-output", type=Path, help="Defaults to the sibling numbers folder")
-    parser.add_argument("--letter-word-pause", type=float, default=0.8)
-    # The Mandarin source includes about 0.18–0.20 seconds of safe leading pad,
-    # so 0.25 seconds here produces an audible language gap near 0.45 seconds.
-    parser.add_argument("--word-chinese-pause", type=float, default=0.25)
+    # Each following segment retains a safe leading pad and the prior segment a
+    # short tail pad, producing audible gaps near 0.8 s and 0.45 s respectively.
+    parser.add_argument("--letter-word-pause", type=float, default=0.70)
+    parser.add_argument("--word-chinese-pause", type=float, default=0.33)
     parser.add_argument("--ids", help="Optional comma-separated item ids, including number-0 through number-20")
     args = parser.parse_args()
     selected_ids = {value.strip() for value in args.ids.split(",") if value.strip()} if args.ids else None
