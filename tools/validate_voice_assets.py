@@ -26,6 +26,12 @@ LETTER_TRANSCRIPTS = {
     "Z": {"z", "zee"},
 }
 MINIMUM_LETTER_SECONDS = {"A": 0.45, "E": 0.42, "P": 0.44}
+WORD_TRANSCRIPT_ALIASES = {
+    # The spoken word "bee" and the letter name B are true English homophones.
+    "bee": {"bee", "b"},
+    "pear": {"pear", "pair"},
+    "sun": {"sun", "son"},
+}
 
 
 def normalize_english(text: str) -> str:
@@ -43,6 +49,15 @@ def normalize_chinese(text: str) -> str:
 
 def repeated_match(actual: str, expected: set[str]) -> bool:
     return any(actual == value * count for value in expected for count in range(1, 5))
+
+
+def english_word_match(actual_text: str, expected: set[str]) -> bool:
+    if repeated_match(normalize_english(actual_text), expected):
+        return True
+    # ASR commonly inserts an article before isolated concrete nouns even when
+    # the audio contains only the noun. Compare again without whole-word articles.
+    tokens = [token for token in re.findall(r"[a-z]+", actual_text.lower()) if token not in {"a", "the"}]
+    return repeated_match("".join(tokens), expected)
 
 
 def run_text(command: list[str]) -> str:
@@ -126,6 +141,7 @@ def main() -> None:
     parser.add_argument("--model", default="small")
     parser.add_argument("--ids", help="Optional comma-separated item ids, for example apple,kite")
     parser.add_argument("--skip-chinese", action="store_true", help="Check only letter names and English words")
+    parser.add_argument("--skip-letters", action="store_true", help="Check only word speech and pauses")
     args = parser.parse_args()
 
     ffmpeg = shutil.which("ffmpeg")
@@ -163,11 +179,15 @@ def main() -> None:
             normalized_chinese = "" if args.skip_chinese else normalize_chinese(chinese_text)
             checks = {
                 "letter_encoding": LETTER_NAMES.get(letter) == letter,
-                "letter": repeated_match(normalized_letter, LETTER_TRANSCRIPTS[letter]),
-                "letter_duration": letter_duration >= MINIMUM_LETTER_SECONDS.get(letter, 0.39),
-                "word": repeated_match(normalized_word, {normalize_english(word)}),
+                "word": english_word_match(
+                    word_text,
+                    WORD_TRANSCRIPT_ALIASES.get(item_id, {normalize_english(word)}),
+                ),
                 "pauses": 0.75 <= pauses[0] <= 0.95 and 0.40 <= pauses[1] <= 0.60,
             }
+            if not args.skip_letters:
+                checks["letter"] = repeated_match(normalized_letter, LETTER_TRANSCRIPTS[letter])
+                checks["letter_duration"] = letter_duration >= MINIMUM_LETTER_SECONDS.get(letter, 0.39)
             if not args.skip_chinese:
                 checks["chinese"] = repeated_match(normalized_chinese, {chinese})
             row = {

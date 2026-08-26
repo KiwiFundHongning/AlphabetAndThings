@@ -6,23 +6,23 @@ const publicSiteUrl = process.env.NEXT_PUBLIC_SITE_URL ??
 
 export const metadata: Metadata = {
   metadataBase: new URL(publicSiteUrl),
-  title: 'AlphabetAndThings | 字母和好朋友',
-  description: '含四档难度与 58 个内置物品，无需登录、记录只存本机的三岁儿童中英双语字母认知小游戏。',
+  title: 'AlphabetAndThings | 字母、数字和好朋友',
+  description: '含四档难度、58 个内置物品与 0–20 数字，无需登录、记录只存本机的三岁儿童中英双语认知小游戏。',
   manifest: 'manifest.webmanifest',
   icons: {
     icon: [{ url: 'icon-64.png', type: 'image/png', sizes: '64x64' }],
     apple: 'icon-192.png',
   },
   openGraph: {
-    title: 'AlphabetAndThings | 字母和好朋友',
-    description: '听一听、看卡通物品、选四档难度，开心认识英文字母。',
+    title: 'AlphabetAndThings | 字母、数字和好朋友',
+    description: '听一听、看卡通物品与点阵，开心认识英文字母和 0–20。',
     type: 'website',
-    images: [{ url: 'og.png', width: 1672, height: 941, alt: 'AlphabetAndThings 儿童字母认知游戏' }],
+    images: [{ url: 'og.png', width: 1672, height: 941, alt: 'AlphabetAndThings 儿童字母与数字认知游戏' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'AlphabetAndThings | 字母和好朋友',
-    description: '听一听、看卡通物品、选四档难度，开心认识英文字母。',
+    title: 'AlphabetAndThings | 字母、数字和好朋友',
+    description: '听一听、看卡通物品与点阵，开心认识英文字母和 0–20。',
     images: ['og.png'],
   },
 };

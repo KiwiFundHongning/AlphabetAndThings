@@ -7,6 +7,7 @@ import {
   CORE_ITEMS,
   DIFFICULTIES,
   EXTENSION_CATALOG,
+  NUMBER_ITEMS,
   activateExtension,
   findExtension,
   type Difficulty,
@@ -34,12 +35,14 @@ type ExtensionStatus = { tone: 'info' | 'success' | 'error'; message: string } |
 const STORAGE_KEY = 'alphabet-and-things-progress-v2';
 const LEGACY_STORAGE_KEY = 'alphabet-and-things-progress-v1';
 const QUESTION_COUNT = 5;
+const NUMBER_QUESTIONS_PER_ROUND = 2;
 const HARD_WRONG_LIMIT = 2;
 const MAX_UPLOAD_BYTES = 6_000_000;
 
 type PictureStyle = CSSProperties & { '--atlas-x'?: string; '--atlas-y'?: string };
 
 function ThingPicture({ item, className = '' }: { item: GameItem; className?: string }) {
+  if (!item.image) return null;
   let style: PictureStyle;
   if (item.image.kind === 'direct') {
     style = {
@@ -119,21 +122,52 @@ function writeProgress(progress: Progress): void {
   }
 }
 
+function choiceCountFor(progress: Progress, item: GameItem): number {
+  const stats = progress.letters[item.letter];
+  const accuracy = stats?.attempts ? stats.firstCorrect / stats.attempts : 0;
+  return progress.difficulty === 'medium' || progress.difficulty === 'hard'
+    ? 3
+    : stats?.attempts >= 3 && accuracy >= 0.8 ? 3 : 2;
+}
+
+function numberDistractors(value: number, count: number): string[] {
+  const candidates = shuffle(NUMBER_ITEMS.filter((item) => item.value !== value))
+    .sort((left, right) => Math.abs((left.value ?? 0) - value) - Math.abs((right.value ?? 0) - value));
+  return candidates.slice(0, count).map((item) => item.letter);
+}
+
 function buildQuestions(progress: Progress, items: GameItem[]): Question[] {
   const grouped = new Map<string, GameItem[]>();
   items.forEach((item) => grouped.set(item.letter, [...(grouped.get(item.letter) ?? []), item]));
-  return shuffle([...grouped.keys()]).slice(0, QUESTION_COUNT).map((letter) => {
+  const wordQuestions = shuffle([...grouped.keys()]).slice(0, QUESTION_COUNT - NUMBER_QUESTIONS_PER_ROUND).map((letter) => {
     const candidates = grouped.get(letter) ?? [];
     const fresh = candidates.filter((item) => !progress.recentItems.includes(item.id));
     const item = shuffle(fresh.length ? fresh : candidates)[0];
-    const stats = progress.letters[letter];
-    const accuracy = stats?.attempts ? stats.firstCorrect / stats.attempts : 0;
-    const choiceCount = progress.difficulty === 'medium' || progress.difficulty === 'hard'
-      ? 3
-      : stats?.attempts >= 3 && accuracy >= 0.8 ? 3 : 2;
+    const choiceCount = choiceCountFor(progress, item);
     const distractors = shuffle(ALLOWED_LETTERS.filter((candidate) => candidate !== letter)).slice(0, choiceCount - 1);
     return { item, choices: shuffle([letter, ...distractors]) };
   });
+
+  const freshNumbers = NUMBER_ITEMS.filter((item) => !progress.recentItems.includes(item.id));
+  const numberPool = freshNumbers.length >= NUMBER_QUESTIONS_PER_ROUND ? freshNumbers : NUMBER_ITEMS;
+  const numberQuestions = shuffle(numberPool).slice(0, NUMBER_QUESTIONS_PER_ROUND).map((item) => {
+    const value = item.value ?? 0;
+    const choiceCount = choiceCountFor(progress, item);
+    return { item, choices: shuffle([item.letter, ...numberDistractors(value, choiceCount - 1)]) };
+  });
+
+  return shuffle([...wordQuestions, ...numberQuestions]);
+}
+
+function NumberDots({ value, className = '' }: { value: number; className?: string }) {
+  const rows = Array.from({ length: Math.ceil(value / 5) }, (_, row) => Math.min(5, value - row * 5));
+  return (
+    <div className={`number-dot-board ${className}`.trim()} role="img" aria-label={`${value} 个圆点`}>
+      {value === 0
+        ? <span className="empty-dot-note" aria-hidden="true" />
+        : rows.map((count, row) => <span className="number-dot-row" key={row}>{Array.from({ length: count }, (_, column) => <i key={column} />)}</span>)}
+    </div>
+  );
 }
 
 function formatDuration(totalSeconds: number): string {
@@ -196,6 +230,8 @@ export default function Home() {
   const sessionStartedAt = useRef(0);
   const gateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const actionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const numberKeyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const numberKeyBuffer = useRef('');
   const pendingFailureCountRef = useRef(0);
   const narrationRef = useRef<HTMLAudioElement | null>(null);
   const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
@@ -219,6 +255,7 @@ export default function Home() {
   useEffect(() => () => {
     if (gateTimer.current) clearTimeout(gateTimer.current);
     if (actionTimer.current) clearTimeout(actionTimer.current);
+    if (numberKeyTimer.current) clearTimeout(numberKeyTimer.current);
     narrationRef.current?.pause();
     backgroundMusicRef.current?.pause();
   }, []);
@@ -319,6 +356,8 @@ export default function Home() {
   }, [saveProgress]);
 
   const prepareQuestion = useCallback((nextIndex: number) => {
+    if (numberKeyTimer.current) clearTimeout(numberKeyTimer.current);
+    numberKeyBuffer.current = '';
     setQuestionIndex(nextIndex);
     setWrongCount(0);
     setAssist(false);
@@ -331,6 +370,8 @@ export default function Home() {
 
   const startGame = () => {
     if (actionTimer.current) clearTimeout(actionTimer.current);
+    if (numberKeyTimer.current) clearTimeout(numberKeyTimer.current);
+    numberKeyBuffer.current = '';
     narrationRef.current?.pause();
     const nextQuestions = buildQuestions(progressRef.current, availableItems);
     setQuestions(nextQuestions);
@@ -353,6 +394,8 @@ export default function Home() {
   const goHome = () => {
     if (screen === 'playing') addElapsedTime(false);
     if (actionTimer.current) clearTimeout(actionTimer.current);
+    if (numberKeyTimer.current) clearTimeout(numberKeyTimer.current);
+    numberKeyBuffer.current = '';
     narrationRef.current?.pause();
     stopMusic();
     setFeedback(null);
@@ -458,13 +501,44 @@ export default function Home() {
         }
         return;
       }
+      if (current.item.kind === 'number') {
+        if (event.key === 'Backspace') {
+          event.preventDefault();
+          numberKeyBuffer.current = numberKeyBuffer.current.slice(0, -1);
+          return;
+        }
+        if (!/^\d$/.test(event.key)) return;
+        event.preventDefault();
+        if (numberKeyTimer.current) clearTimeout(numberKeyTimer.current);
+        const candidate = `${numberKeyBuffer.current}${event.key}`.slice(-2);
+        const matches = current.choices.filter((choice) => choice.startsWith(candidate));
+        numberKeyBuffer.current = matches.length ? candidate : event.key;
+        const exact = current.choices.find((choice) => choice === numberKeyBuffer.current);
+        const hasLongerMatch = current.choices.some((choice) => choice.startsWith(numberKeyBuffer.current) && choice !== numberKeyBuffer.current);
+        if (exact && !hasLongerMatch) {
+          numberKeyBuffer.current = '';
+          answerQuestion(exact);
+          return;
+        }
+        numberKeyTimer.current = setTimeout(() => {
+          const delayedExact = current.choices.find((choice) => choice === numberKeyBuffer.current);
+          numberKeyBuffer.current = '';
+          if (delayedExact) answerQuestion(delayedExact);
+        }, 700);
+        return;
+      }
       const letter = event.key.toUpperCase();
-      if (!current.choices.includes(letter)) return;
-      event.preventDefault();
-      answerQuestion(letter);
+      if (current.choices.includes(letter)) {
+        event.preventDefault();
+        answerQuestion(letter);
+      }
     };
     window.addEventListener('keydown', handleLetterKey);
-    return () => window.removeEventListener('keydown', handleLetterKey);
+    return () => {
+      window.removeEventListener('keydown', handleLetterKey);
+      if (numberKeyTimer.current) clearTimeout(numberKeyTimer.current);
+      numberKeyBuffer.current = '';
+    };
   }, [answerQuestion, current, feedback, screen, skipFeedback]);
 
   const beginParentHold = () => {
@@ -478,7 +552,9 @@ export default function Home() {
     const records = Object.values(progress.letters);
     const attempts = records.reduce((total, item) => total + item.attempts, 0);
     const firstCorrect = records.reduce((total, item) => total + item.firstCorrect, 0);
-    return { practiced: records.filter((item) => item.attempts > 0).length, attempts, accuracy: attempts ? Math.round((firstCorrect / attempts) * 100) : 0 };
+    const practicedLetters = CORE_ITEMS.filter((item) => (progress.letters[item.letter]?.attempts ?? 0) > 0).length;
+    const practicedNumbers = NUMBER_ITEMS.filter((item) => (progress.letters[item.letter]?.attempts ?? 0) > 0).length;
+    return { practicedLetters, practicedNumbers, attempts, accuracy: attempts ? Math.round((firstCorrect / attempts) * 100) : 0 };
   }, [progress.letters]);
 
   const resetProgress = () => {
@@ -535,8 +611,11 @@ export default function Home() {
   };
 
   if (screen === 'playing' && current) {
-    const showPicture = progress.difficulty === 'beginner' || progress.difficulty === 'easy';
-    const showWords = progress.difficulty === 'beginner';
+    const isNumber = current.item.kind === 'number';
+    const showVisual = progress.difficulty === 'beginner' || progress.difficulty === 'easy';
+    const showPicture = !isNumber && showVisual;
+    const showDots = isNumber && showVisual;
+    const showWords = !isNumber && progress.difficulty === 'beginner';
     const audioOnly = progress.difficulty === 'medium' || progress.difficulty === 'hard';
     return (
       <main className="game-shell">
@@ -548,12 +627,13 @@ export default function Home() {
             </div>
             {progress.difficulty === 'hard' && <div className="hard-status">本轮休息题：{failedQuestions}/{progress.hardFailureLimit}</div>}
           </div>
-          <button className="round-icon-button speaker-button" type="button" onClick={() => { startMusic(); playPronunciation(current.item); }} aria-label="再听字母和物品读音">🔊</button>
+          <button className="round-icon-button speaker-button" type="button" onClick={() => { startMusic(); playPronunciation(current.item); }} aria-label={isNumber ? '再听数字读音' : '再听字母和物品读音'}>🔊</button>
         </header>
 
         <section className="question-area">
-          <div className={`learning-focus ${audioOnly ? 'audio-only-focus' : ''} ${showPicture && !showWords ? 'picture-only-focus' : ''}`}>
+          <div className={`learning-focus ${isNumber ? 'number-focus' : ''} ${audioOnly ? 'audio-only-focus' : ''} ${(showPicture || showDots) && !showWords ? 'picture-only-focus' : ''}`}>
             {showPicture && <ThingPicture item={current.item} className="focus-picture" />}
+            {showDots && <NumberDots value={current.item.value ?? 0} className="focus-number-dots" />}
             {showWords && <div className="focus-caption"><span className="focus-word"><strong>{current.item.letter}</strong><b>{current.item.word.slice(1)}</b></span><small>{current.item.chinese}</small></div>}
             {audioOnly && <button className="listen-again-card" type="button" onClick={() => playPronunciation(current.item)}><span aria-hidden="true">🔊</span><small>点这里再听一次</small></button>}
           </div>
@@ -561,26 +641,26 @@ export default function Home() {
           <div className={`choice-grid choices-${current.choices.length}`}>
             {current.choices.map((letter) => {
               const isTarget = letter === current.item.letter;
-              const classes = ['letter-choice', wrongCount > 0 && isTarget && progress.difficulty !== 'hard' ? 'hinted' : '', assist && isTarget ? 'assisted' : '', selectedLetter === letter && feedback === 'wrong' ? 'wrong-choice' : '', selectedLetter === letter && feedback === 'correct' ? 'correct-choice' : ''].filter(Boolean).join(' ');
-              return <button className={classes} type="button" key={letter} disabled={locked || (assist && !isTarget)} onClick={() => answerQuestion(letter)} aria-label={`字母 ${letter}`}><span>{letter}</span><small>按 {letter} 键</small></button>;
+              const classes = ['letter-choice', isNumber ? 'number-choice' : '', wrongCount > 0 && isTarget && progress.difficulty !== 'hard' ? 'hinted' : '', assist && isTarget ? 'assisted' : '', selectedLetter === letter && feedback === 'wrong' ? 'wrong-choice' : '', selectedLetter === letter && feedback === 'correct' ? 'correct-choice' : ''].filter(Boolean).join(' ');
+              return <button className={classes} type="button" key={letter} disabled={locked || (assist && !isTarget)} onClick={() => answerQuestion(letter)} aria-label={`${isNumber ? '数字' : '字母'} ${letter}`}><span>{letter}</span><small>{isNumber ? `键入 ${letter}` : `按 ${letter} 键`}</small></button>;
             })}
           </div>
           <div className="feedback-message" role="status" aria-live="polite">
             {feedback === 'wrong' && (progress.difficulty === 'hard' ? '再试一次' : assist ? `一起点击 ${current.item.letter}` : '没关系，再试一次！')}
             {!feedback && assist && `看，${current.item.letter} 在闪闪发光！`}
-            {!feedback && !assist && '可以点选，也可以按键盘上的字母键'}
+            {!feedback && !assist && (isNumber ? '可以点选，也可以用键盘输入数字' : '可以点选，也可以按键盘上的字母键')}
           </div>
         </section>
 
         {feedback === 'wrong' && <button className="wrong-feedback-overlay" type="button" onClick={skipFeedback} aria-label="答错了，点击继续作答"><span className="wrong-mark" aria-hidden="true">×</span><span className="wrong-overlay-copy">没关系，再试一次</span></button>}
         {feedback === 'questionFailed' && <button className="wrong-feedback-overlay question-failed-overlay" type="button" onClick={skipFeedback} aria-label="本题结束，点击继续"><span className="wrong-mark soft-cross" aria-hidden="true">×</span><span className="wrong-overlay-copy">这题先休息一下</span><small>点击或按任意键继续</small></button>}
-        {feedback === 'correct' && <button className="reward-overlay" type="button" onClick={skipFeedback} aria-label="跳过正确动画，继续下一题"><div className="reward-card"><div className="reward-stars" aria-hidden="true">★ ✦ ★</div><ThingPicture item={current.item} className="reward-picture" /><div className="reward-word"><span className="reward-english"><strong>{current.item.letter}</strong>{current.item.word.slice(1)}</span><small>{current.item.chinese}</small></div><p>太棒了！</p><small className="skip-hint">点击或按任意键继续</small></div></button>}
+        {feedback === 'correct' && <button className="reward-overlay" type="button" onClick={skipFeedback} aria-label="跳过正确动画，继续下一题"><div className="reward-card"><div className="reward-stars" aria-hidden="true">★ ✦ ★</div>{isNumber ? <NumberDots value={current.item.value ?? 0} className="reward-number-dots" /> : <ThingPicture item={current.item} className="reward-picture" />}<div className={`reward-word ${isNumber ? 'reward-number-answer' : ''}`}>{isNumber ? <><span className="reward-english"><strong>{current.item.letter}</strong> · {current.item.word}</span><small>{current.item.chinese}</small></> : <><span className="reward-english"><strong>{current.item.letter}</strong>{current.item.word.slice(1)}</span><small>{current.item.chinese}</small></>}</div><p>太棒了！</p><small className="skip-hint">点击或按任意键继续</small></div></button>}
       </main>
     );
   }
 
   if (screen === 'complete') {
-    return <main className="celebration-shell"><section className="celebration-card"><div className="celebration-stars" aria-hidden="true">⭐ ✨ ⭐</div><div className="trophy" aria-hidden="true">🏆</div><p className="eyebrow">完成一轮啦</p><h1>做得真棒！</h1><p className="celebration-copy">你完成了 {QUESTION_COUNT} 道字母题，第一次就答对了 {sessionFirstTries} 题。</p><div className="celebration-actions"><button className="start-button compact" type="button" onClick={startGame}>再玩一次</button><button className="soft-button" type="button" onClick={goHome}>回到首页</button></div></section></main>;
+    return <main className="celebration-shell"><section className="celebration-card"><div className="celebration-stars" aria-hidden="true">⭐ ✨ ⭐</div><div className="trophy" aria-hidden="true">🏆</div><p className="eyebrow">完成一轮啦</p><h1>做得真棒！</h1><p className="celebration-copy">你完成了 {QUESTION_COUNT} 道字母和数字题，第一次就答对了 {sessionFirstTries} 题。</p><div className="celebration-actions"><button className="start-button compact" type="button" onClick={startGame}>再玩一次</button><button className="soft-button" type="button" onClick={goHome}>回到首页</button></div></section></main>;
   }
 
   if (screen === 'failed') {
@@ -593,16 +673,17 @@ export default function Home() {
       <main className="parent-shell">
         <header className="parent-header"><div><p className="eyebrow">仅保存在这台设备</p><h1>家长专区</h1></div><button className="soft-button" type="button" onClick={goHome}>完成</button></header>
         <section className="summary-grid" aria-label="学习概况">
-          <article><span>认识过</span><strong>{summary.practiced}<small>/22</small></strong><p>个字母</p></article>
+          <article><span>认识过</span><strong>{summary.practicedLetters}<small>/22</small></strong><p>个字母</p></article>
+          <article><span>数过</span><strong>{summary.practicedNumbers}<small>/21</small></strong><p>个数字</p></article>
           <article><span>完成练习</span><strong>{summary.attempts}</strong><p>道题</p></article>
           <article><span>首次正确率</span><strong>{summary.accuracy}<small>%</small></strong><p>不显示给孩子</p></article>
-          <article><span>可用物品</span><strong>{availableItems.length}</strong><p>含 {customItems.length} 个家长扩展词</p></article>
+          <article><span>学习内容</span><strong>{availableItems.length + NUMBER_ITEMS.length}</strong><p>{availableItems.length} 个物品 · 21 个数字</p></article>
           <article><span>练习时间</span><strong className="duration-number">{formatDuration(progress.totalSeconds)}</strong><p>{progress.sessions} 个完整小回合</p></article>
         </section>
 
         <section className="parent-panel difficulty-parent-panel"><div><h2>难度与困难模式</h2><p>困难模式同题连续错 {HARD_WRONG_LIMIT} 次，本题会先结束。</p></div><label className="hard-limit-control"><span>累计失败上限</span><input type="range" min="1" max="5" step="1" value={progress.hardFailureLimit} onChange={(event) => saveProgress((previous) => ({ ...previous, hardFailureLimit: Number(event.target.value) }))} /><strong>{progress.hardFailureLimit} 题</strong></label></section>
 
-        <section className="parent-panel settings-panel"><div><h2>声音</h2><p>标准美式英语和普通话读音随游戏保存；背景音乐在读音时自动变轻。</p></div><div className="sound-control-stack"><label className="volume-control"><strong>读音</strong><span aria-hidden="true">🔈</span><input type="range" min="0" max="1" step="0.05" value={progress.volume} onChange={(event) => saveProgress((previous) => ({ ...previous, volume: Number(event.target.value) }))} aria-label="读音音量" /><span aria-hidden="true">🔊</span></label><label className="volume-control"><strong>音乐</strong><span aria-hidden="true">♪</span><input type="range" min="0" max="0.4" step="0.01" value={progress.musicVolume} onChange={(event) => { const musicVolume = Number(event.target.value); saveProgress((previous) => ({ ...previous, musicVolume })); if (backgroundMusicRef.current) backgroundMusicRef.current.volume = musicVolume; }} aria-label="背景音乐音量" /><span aria-hidden="true">♫</span></label></div></section>
+        <section className="parent-panel settings-panel"><div><h2>声音</h2><p>自然美式英语和普通话教学读音随游戏保存；背景音乐在读音时自动变轻。</p></div><div className="sound-control-stack"><label className="volume-control"><strong>读音</strong><span aria-hidden="true">🔈</span><input type="range" min="0" max="1" step="0.05" value={progress.volume} onChange={(event) => saveProgress((previous) => ({ ...previous, volume: Number(event.target.value) }))} aria-label="读音音量" /><span aria-hidden="true">🔊</span></label><label className="volume-control"><strong>音乐</strong><span aria-hidden="true">♪</span><input type="range" min="0" max="0.4" step="0.01" value={progress.musicVolume} onChange={(event) => { const musicVolume = Number(event.target.value); saveProgress((previous) => ({ ...previous, musicVolume })); if (backgroundMusicRef.current) backgroundMusicRef.current.volume = musicVolume; }} aria-label="背景音乐音量" /><span aria-hidden="true">♫</span></label></div></section>
 
         <section className="parent-panel extension-panel">
           <div className="extension-heading"><div><h2>本地扩展词库</h2><p>输入中文或英文，由本地安全词表识别；图片由家长上传并确认。整个过程无需联网，也不会安装模型。</p></div><span className="local-badge">完全本地</span></div>
@@ -630,6 +711,8 @@ export default function Home() {
 
         <section className="parent-panel"><div className="panel-heading"><div><h2>字母学习记录</h2><p>“首次正确”只统计每道题第一次选择。</p></div></div><div className="letter-stats-grid">{CORE_ITEMS.map((item) => { const stats = progress.letters[item.letter]; const accuracy = stats?.attempts ? Math.round((stats.firstCorrect / stats.attempts) * 100) : null; return <article className="letter-stat" key={item.letter}><div className="stat-letter" style={{ background: item.color }}>{item.letter}</div><div><strong>{availableItems.filter((entry) => entry.letter === item.letter).length} 个物品</strong><p>{stats?.attempts ?? 0} 次练习 · {accuracy === null ? '尚无正确率' : `${accuracy}% 首次正确`}</p>{stats?.lastPlayed && <small>最近：{new Date(stats.lastPlayed).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</small>}</div><ThingPicture item={item} className="stat-picture" /></article>; })}</div></section>
 
+        <section className="parent-panel"><div className="panel-heading"><div><h2>数字学习记录</h2><p>0–20 会随机混入每一轮，记录规则与字母题相同。</p></div></div><div className="letter-stats-grid number-stats-grid">{NUMBER_ITEMS.map((item) => { const stats = progress.letters[item.letter]; const accuracy = stats?.attempts ? Math.round((stats.firstCorrect / stats.attempts) * 100) : null; return <article className="letter-stat number-stat" key={item.id}><div className="stat-letter" style={{ background: item.color }}>{item.letter}</div><div><strong>{item.word} · {item.chinese}</strong><p>{stats?.attempts ?? 0} 次练习 · {accuracy === null ? '尚无正确率' : `${accuracy}% 首次正确`}</p>{stats?.lastPlayed && <small>最近：{new Date(stats.lastPlayed).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</small>}</div></article>; })}</div></section>
+
         <section className="parent-panel privacy-panel"><div><h2>隐私与记录</h2><p>无需登录，没有服务器数据库、广告或追踪。不使用麦克风、摄像头和位置。上传图片、扩展词和学习统计都只保存在本机。</p></div>{!confirmReset ? <button className="danger-soft-button" type="button" onClick={() => setConfirmReset(true)}>清除学习记录</button> : <div className="reset-confirm"><span>确定清除学习统计吗？已加词库会保留。</span><button type="button" onClick={resetProgress}>确定清除</button><button type="button" onClick={() => setConfirmReset(false)}>取消</button></div>}</section>
       </main>
     );
@@ -640,9 +723,9 @@ export default function Home() {
       <div className="sun-glow" aria-hidden="true" /><div className="cloud cloud-one" aria-hidden="true" /><div className="cloud cloud-two" aria-hidden="true" />
       <header className="home-header"><div className="brand-mark" aria-label="Alphabet and Things"><span className="brand-excavator" style={{ backgroundImage: "url('icon-192.png')" }} aria-hidden="true" /></div><div className="parent-gate-wrap"><button className="grown-up-button" type="button" aria-label="家长专区，长按三秒进入" onPointerDown={beginParentHold} onPointerUp={cancelParentHold} onPointerLeave={cancelParentHold} onPointerCancel={cancelParentHold} onKeyDown={(event) => { if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) beginParentHold(); }} onKeyUp={cancelParentHold} onContextMenu={(event) => event.preventDefault()} onClick={() => setGateMessage('请长按 3 秒进入')}><span aria-hidden="true">🔒</span>家长专区</button>{gateMessage && <span className="gate-message" role="status">{gateMessage}</span>}</div></header>
       <section className="hero" aria-labelledby="game-title">
-        <div className="hero-copy"><p className="eyebrow">听一听 · 找一找 · 认识字母</p><h1 id="game-title"><span>字母和好朋友</span><small>Alphabet &amp; Things</small></h1><p className="welcome-copy">和动物、工程车、水果一起，<br />开心认识英文字母！</p>
+        <div className="hero-copy"><p className="eyebrow">听一听 · 数一数 · 找一找</p><h1 id="game-title"><span>字母、数字<br />和好朋友</span><small>Alphabet &amp; Things</small></h1><p className="welcome-copy">和动物、工程车、水果一起，<br />开心认识英文字母和 0–20！</p>
           <div className="difficulty-picker" aria-label="选择游戏难度">{DIFFICULTIES.map((difficulty) => <button key={difficulty.id} type="button" className={progress.difficulty === difficulty.id ? 'difficulty-option selected' : 'difficulty-option'} onClick={() => saveProgress((previous) => ({ ...previous, difficulty: difficulty.id }))} aria-pressed={progress.difficulty === difficulty.id}><strong>{difficulty.label}</strong><span>{difficulty.short}</span></button>)}</div>
-          <button className="start-button" type="button" onClick={startGame}><span className="play-icon" aria-hidden="true">▶</span><span>开始{activeDifficulty.label}游戏<small>LET&apos;S PLAY!</small></span></button><div className="session-note" aria-label="每轮五题"><span aria-hidden="true">⭐</span>每次 5 题 · {availableItems.length} 个物品 · 记录只存在本机</div>
+          <button className="start-button" type="button" onClick={startGame}><span className="play-icon" aria-hidden="true">▶</span><span>开始{activeDifficulty.label}游戏<small>LET&apos;S PLAY!</small></span></button><div className="session-note" aria-label="每轮五题，三个物品题和两个数字题"><span aria-hidden="true">⭐</span>每次 5 题 · 3 个物品＋2 个数字 · 记录只存在本机</div>
         </div>
         <div className="friends-stage" aria-label="字母与事物示例"><div className="rainbow" aria-hidden="true"><span /></div>{CORE_ITEMS.slice(0, 3).map((item, index) => <div className={`friend friend-${['apple', 'ball', 'cat'][index]}`} key={item.letter}><span className="friend-letter">{item.letter}</span><ThingPicture item={item} className="friend-thing" /></div>)}<div className="ground" aria-hidden="true"><span className="flower flower-one">✿</span><span className="flower flower-two">✿</span><span className="flower flower-three">✿</span></div></div>
       </section>

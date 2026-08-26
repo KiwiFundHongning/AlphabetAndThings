@@ -1,6 +1,6 @@
 export type Difficulty = 'beginner' | 'easy' | 'medium' | 'hard';
 
-export type ItemCategory = 'animal' | 'vehicle' | 'fruit' | 'vegetable' | 'daily' | 'nature' | 'food';
+export type ItemCategory = 'animal' | 'vehicle' | 'fruit' | 'vegetable' | 'daily' | 'nature' | 'food' | 'number';
 
 export type AtlasImage = {
   kind: 'atlas';
@@ -18,16 +18,18 @@ export type DirectImage = {
 
 export type GameItem = {
   id: string;
+  kind: 'word' | 'number';
   letter: string;
   word: string;
   chinese: string;
   category: ItemCategory;
   color: string;
   audio: string;
-  image: AtlasImage | DirectImage;
+  image?: AtlasImage | DirectImage;
+  value?: number;
 };
 
-export type ExtensionCatalogItem = Omit<GameItem, 'image'> & {
+export type ExtensionCatalogItem = Omit<GameItem, 'image' | 'value'> & {
   aliases: string[];
 };
 
@@ -37,8 +39,8 @@ export const DIFFICULTIES: Array<{
   short: string;
   description: string;
 }> = [
-  { id: 'beginner', label: '新手', short: '图＋单词＋声音', description: '图片、英文和中文都看得到' },
-  { id: 'easy', label: '简单', short: '只看图和听声音', description: '隐藏单词，用图片来理解' },
+  { id: 'beginner', label: '新手', short: '图／点阵＋声音', description: '物品有单词提示，数字显示点阵' },
+  { id: 'easy', label: '简单', short: '只看图／点阵', description: '隐藏物品单词，用图片或点阵理解' },
   { id: 'medium', label: '中等', short: '只听声音', description: '没有图片和文字提示' },
   { id: 'hard', label: '困难', short: '听声音＋失败规则', description: '连续答错会失去本题机会' },
 ];
@@ -60,6 +62,7 @@ const baseAtlas = (
   row: number,
 ): GameItem => ({
   id,
+  kind: 'word',
   letter,
   word,
   chinese,
@@ -86,6 +89,7 @@ const expandedAtlas = (
   row: number,
 ): GameItem => ({
   id,
+  kind: 'word',
   letter,
   word,
   chinese,
@@ -111,6 +115,7 @@ const directImage = (
   src: string,
 ): GameItem => ({
   id,
+  kind: 'word',
   letter,
   word,
   chinese,
@@ -187,6 +192,29 @@ export const EXPANDED_ITEMS: GameItem[] = [
 export const BUILTIN_ITEMS = [...CORE_ITEMS, ...EXPANDED_ITEMS];
 export const ALLOWED_LETTERS = [...new Set(BUILTIN_ITEMS.map((item) => item.letter))];
 
+const NUMBER_WORDS = [
+  'Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+  'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
+  'Seventeen', 'Eighteen', 'Nineteen', 'Twenty',
+];
+const NUMBER_WORDS_CHINESE = [
+  '零', '一', '二', '三', '四', '五', '六', '七', '八', '九',
+  '十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十',
+];
+const NUMBER_COLORS = ['#ef6475', '#5e9de1', '#55bca8', '#e9a83d', '#9a77db'];
+
+export const NUMBER_ITEMS: GameItem[] = Array.from({ length: 21 }, (_, value) => ({
+  id: `number-${value}`,
+  kind: 'number',
+  letter: String(value),
+  word: NUMBER_WORDS[value],
+  chinese: NUMBER_WORDS_CHINESE[value],
+  category: 'number',
+  color: NUMBER_COLORS[value % NUMBER_COLORS.length],
+  audio: `audio/voice/numbers/${value}.mp3`,
+  value,
+}));
+
 const extension = (
   id: string,
   letter: string,
@@ -196,6 +224,7 @@ const extension = (
   aliases: string[] = [],
 ): ExtensionCatalogItem => ({
   id,
+  kind: 'word',
   letter,
   word,
   chinese,
@@ -248,6 +277,7 @@ export function findExtension(value: string): ExtensionCatalogItem | undefined {
 export function activateExtension(item: ExtensionCatalogItem, imageDataUrl: string): GameItem {
   return {
     id: item.id,
+    kind: 'word',
     letter: item.letter,
     word: item.word,
     chinese: item.chinese,

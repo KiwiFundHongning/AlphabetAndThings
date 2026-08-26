@@ -1,4 +1,4 @@
-const CACHE_NAME = 'alphabet-and-things-v6';
+const CACHE_NAME = 'alphabet-and-things-v7';
 const VOICE_IDS = [
   'apple', 'ball', 'cat', 'dog', 'egg', 'fish', 'grapes', 'hat', 'ice-cream', 'juice', 'kite',
   'lion', 'moon', 'nose', 'orange', 'panda', 'rabbit', 'sun', 'train', 'umbrella', 'whale', 'zebra',
@@ -10,6 +10,7 @@ const VOICE_IDS = [
   'key', 'lamp', 'milk', 'octopus', 'owl', 'penguin', 'robot', 'spoon', 'star', 'tiger', 'unicorn',
   'watch',
 ];
+const NUMBER_VALUES = Array.from({ length: 21 }, (_, value) => value);
 const CORE_ASSETS = [
   './',
   './manifest.webmanifest',
@@ -22,6 +23,7 @@ const CORE_ASSETS = [
   './things/leaf-v1.png',
   './audio/music/gentle-ocean-play.mp3',
   ...VOICE_IDS.map((id) => `./audio/voice/items/${id}.mp3`),
+  ...NUMBER_VALUES.map((value) => `./audio/voice/numbers/${value}.mp3`),
 ];
 
 async function cacheApplicationShell() {

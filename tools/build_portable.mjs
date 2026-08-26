@@ -38,7 +38,7 @@ const html = `<!doctype html>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="light">
-  <title>AlphabetAndThings｜字母和好朋友</title>
+  <title>AlphabetAndThings｜字母、数字和好朋友</title>
   <link rel="icon" type="image/png" sizes="64x64" href="icon-64.png">
   <style>${stylesheet.replaceAll('</style', '<\\/style')}</style>
 </head>
@@ -60,6 +60,7 @@ await writeFile(
     '1. 解压整个“AlphabetAndThings-分享版”文件夹。',
     '2. 双击“打开游戏.html”。',
     '3. 游戏会在默认浏览器中打开，无需安装、登录或联网。',
+    '4. 每轮包含 3 个物品题和 2 个 0–20 数字题。',
     '',
     '请不要只复制 HTML 文件；audio 和 things 文件夹也需要放在旁边。',
     '学习记录只保存在当前浏览器和当前设备中。',

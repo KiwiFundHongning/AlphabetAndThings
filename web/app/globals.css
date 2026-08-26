@@ -482,6 +482,60 @@ button:focus-visible {
   box-shadow: 0 16px 38px rgba(55, 97, 128, .18);
 }
 
+.learning-focus.number-focus {
+  min-height: 370px;
+}
+
+.number-dot-board {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.focus-number-dots {
+  width: min(390px, 86vw);
+  min-height: 310px;
+  padding: 22px;
+  border: 5px solid #fff;
+  border-radius: 36px;
+  background: linear-gradient(150deg, #fffdf5, #edf8ff);
+  box-shadow: 0 10px 26px rgba(55, 83, 104, .17);
+}
+
+.number-dot-row {
+  display: flex;
+  min-height: 45px;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.number-dot-row i {
+  display: block;
+  width: clamp(32px, 5.2vw, 45px);
+  height: clamp(32px, 5.2vw, 45px);
+  border: 4px solid #fff;
+  border-radius: 50%;
+  background: #ef6475;
+  box-shadow: inset 0 -5px 0 rgba(118, 37, 51, .13), 0 4px 8px rgba(76, 91, 103, .15);
+}
+
+.number-dot-row:nth-child(2n) i { background: #f4b94f; }
+.number-dot-row:nth-child(3n) i { background: #69b97a; }
+.number-dot-row:nth-child(4n) i { background: #5d98e2; }
+
+.empty-dot-note {
+  display: grid;
+  width: 210px;
+  height: 210px;
+  place-items: center;
+  border: 7px dashed #a8c6d9;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(168, 198, 217, .15), transparent 66%);
+}
+
 .focus-picture {
   width: clamp(238px, 31vh, 324px);
   height: clamp(238px, 31vh, 324px);
@@ -565,6 +619,10 @@ button:focus-visible {
 }
 
 .letter-choice > span { line-height: .88; }
+
+.letter-choice.number-choice > span {
+  font-size: clamp(65px, 8.5vw, 100px);
+}
 
 .letter-choice > small {
   margin-top: 15px;
@@ -699,6 +757,31 @@ button:focus-visible {
   box-shadow: 0 9px 18px rgba(56, 79, 93, .18);
 }
 
+.reward-number-dots {
+  width: 250px;
+  min-height: 150px;
+  gap: 6px;
+}
+
+.reward-number-dots .number-dot-row {
+  min-height: 24px;
+  gap: 8px;
+}
+
+.reward-number-dots .number-dot-row i {
+  width: 23px;
+  height: 23px;
+  border-width: 2px;
+  box-shadow: inset 0 -3px 0 rgba(118, 37, 51, .13), 0 2px 4px rgba(76, 91, 103, .13);
+}
+
+.reward-number-dots .empty-dot-note {
+  width: 125px;
+  height: 125px;
+  border-width: 5px;
+  font-size: 20px;
+}
+
 .reward-word {
   display: flex;
   align-items: baseline;
@@ -709,6 +792,8 @@ button:focus-visible {
 .reward-english { font-size: 31px; font-weight: 900; }
 .reward-word strong { color: #e9566b; font-size: 49px; }
 .reward-word small { color: #687f91; font-size: 21px; font-weight: 800; }
+.reward-number-answer .reward-english { font-size: 25px; }
+.reward-number-answer .reward-english strong { margin-right: 5px; font-size: 54px; }
 .reward-card > p { margin: 4px 0 0; color: #47769d; font-size: 24px; font-weight: 900; }
 .reward-card > .skip-hint { color: #7890a2; font-size: 14px; font-weight: 800; }
 
@@ -867,6 +952,10 @@ button:focus-visible {
   box-shadow: 0 3px 8px rgba(46, 74, 93, .12);
 }
 
+.number-stat {
+  grid-template-columns: 58px 1fr;
+}
+
 .reset-confirm { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; color: #a14b51; font-size: 14px; font-weight: 800; }
 .reset-confirm button { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: #f3e8e9; color: #9f454d; cursor: pointer; font-weight: 800; }
 .reset-confirm button:last-child { background: #eef3f6; color: #5e7484; }
@@ -970,6 +1059,11 @@ button:focus-visible {
 
   .question-area { width: calc(100% - 24px); padding-top: 4px; }
   .learning-focus { width: min(390px, 100%); gap: 8px; padding: 12px 14px 15px; border-width: 4px; border-radius: 30px; }
+  .learning-focus.number-focus { min-height: 320px; }
+  .focus-number-dots { min-height: 270px; padding: 14px 10px; }
+  .number-dot-row { min-height: 38px; gap: 11px; }
+  .number-dot-row i { width: clamp(29px, 8vw, 38px); height: clamp(29px, 8vw, 38px); border-width: 3px; }
+  .empty-dot-note { width: 180px; height: 180px; font-size: 23px; }
   .focus-picture { width: clamp(188px, 33vh, 250px); height: clamp(188px, 33vh, 250px); border-width: 4px; }
   .focus-caption { gap: 8px; }
   .focus-caption strong { width: 54px; height: 54px; border-radius: 17px; font-size: 38px; }
