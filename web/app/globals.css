@@ -52,31 +52,19 @@ button { font: inherit; }
 }
 
 .brand-mark {
-  display: flex;
-  width: 82px;
-  height: 68px;
-  align-items: center;
-  justify-content: center;
-  transform: rotate(-4deg);
-  border: 4px solid #fff;
-  border-radius: 22px;
-  background: var(--yellow);
-  box-shadow: 0 7px 0 #e8ae37, 0 12px 28px rgba(65, 98, 123, 0.18);
+  display: block;
+  width: 104px;
+  height: 76px;
 }
 
-.brand-a {
-  color: #e94d67;
-  font-size: 46px;
-  line-height: 1;
-  text-shadow: 0 3px 0 #fff;
-}
-
-.brand-apple {
-  width: 34px;
-  height: 34px;
-  margin: 0 0 -25px -10px;
-  border: 2px solid rgba(255,255,255,.72);
-  box-shadow: 0 3px 6px rgba(74, 74, 53, .16);
+.brand-excavator {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  filter: drop-shadow(0 8px 10px rgba(65, 98, 123, 0.2));
 }
 
 .grown-up-button {

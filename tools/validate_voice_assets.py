@@ -12,11 +12,11 @@ from pathlib import Path
 
 from faster_whisper import WhisperModel
 
-from generate_neural_voice_assets import ITEMS
+from generate_neural_voice_assets import ITEMS, LETTER_NAMES
 
 LETTER_TRANSCRIPTS = {
     "A": {"a", "ay"}, "B": {"b", "bee"}, "C": {"c", "see"},
-    "D": {"d", "dee"}, "E": {"e"}, "F": {"f", "eff"},
+    "D": {"d", "dee"}, "E": {"e", "ee"}, "F": {"f", "eff"},
     "G": {"g", "gee"}, "H": {"h", "aitch"}, "I": {"i", "eye"},
     "J": {"j", "jay"}, "K": {"k", "kay"}, "L": {"l", "el"},
     "M": {"m", "em"}, "N": {"n", "en"}, "O": {"o", "oh"},
@@ -25,6 +25,7 @@ LETTER_TRANSCRIPTS = {
     "U": {"u", "you"}, "W": {"w", "doubleu", "doubleyou"},
     "Z": {"z", "zee"},
 }
+MINIMUM_LETTER_SECONDS = {"A": 0.45, "E": 0.42, "P": 0.44}
 
 
 def normalize_english(text: str) -> str:
@@ -102,12 +103,29 @@ def transcribe(model: WhisperModel, source: Path, language: str) -> str:
     return "".join(segment.text for segment in segments).strip()
 
 
+def trimmed_speech_duration(ffmpeg: str, ffprobe: str, source: Path, destination: Path) -> float:
+    trim = (
+        "silenceremove=start_periods=1:start_duration=0.02:start_threshold=-55dB,"
+        "areverse,silenceremove=start_periods=1:start_duration=0.02:"
+        "start_threshold=-55dB,areverse"
+    )
+    subprocess.run([
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
+        "-af", trim, str(destination),
+    ], check=True)
+    return float(run_text([
+        ffprobe, "-v", "error", "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1", str(destination),
+    ]).strip())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--report", type=Path)
     parser.add_argument("--model", default="small")
     parser.add_argument("--ids", help="Optional comma-separated item ids, for example apple,kite")
+    parser.add_argument("--skip-chinese", action="store_true", help="Check only letter names and English words")
     args = parser.parse_args()
 
     ffmpeg = shutil.which("ffmpeg")
@@ -133,26 +151,33 @@ def main() -> None:
             for wav, repeated in zip(wavs, repeated_wavs):
                 repeat_wav(ffmpeg, wav, repeated)
 
+            letter_duration = trimmed_speech_duration(
+                ffmpeg, ffprobe, wavs[0], temp_root / f"{item_id}-letter-trimmed.wav"
+            )
+
             letter_text = transcribe(model, repeated_wavs[0], "en")
             word_text = transcribe(model, repeated_wavs[1], "en")
-            chinese_text = transcribe(model, repeated_wavs[2], "zh")
+            chinese_text = "not checked" if args.skip_chinese else transcribe(model, repeated_wavs[2], "zh")
             normalized_letter = normalize_english(letter_text)
             normalized_word = normalize_english(word_text)
-            normalized_chinese = normalize_chinese(chinese_text)
+            normalized_chinese = "" if args.skip_chinese else normalize_chinese(chinese_text)
             checks = {
-                "letter_name_is_explicit": letter in LETTER_TRANSCRIPTS,
+                "letter_encoding": LETTER_NAMES.get(letter) == letter,
+                "letter": repeated_match(normalized_letter, LETTER_TRANSCRIPTS[letter]),
+                "letter_duration": letter_duration >= MINIMUM_LETTER_SECONDS.get(letter, 0.39),
                 "word": repeated_match(normalized_word, {normalize_english(word)}),
-                "chinese": repeated_match(normalized_chinese, {chinese}),
-                "pauses": 0.7 <= pauses[0] <= 1.2 and 0.35 <= pauses[1] <= 0.75,
+                "pauses": 0.75 <= pauses[0] <= 0.95 and 0.40 <= pauses[1] <= 0.60,
             }
+            if not args.skip_chinese:
+                checks["chinese"] = repeated_match(normalized_chinese, {chinese})
             row = {
                 "id": item_id,
                 "letter": letter,
                 "expected": [letter, word, chinese],
                 "transcribed": [letter_text, word_text, chinese_text],
+                "letter_speech_seconds": round(letter_duration, 3),
                 "pauses_seconds": pauses,
                 "checks": checks,
-                "letter_asr_match": repeated_match(normalized_letter, LETTER_TRANSCRIPTS[letter]),
                 "passed": all(checks.values()),
             }
             results.append(row)

@@ -1,10 +1,10 @@
-const CACHE_NAME = 'alphabet-and-things-v5';
+const CACHE_NAME = 'alphabet-and-things-v6';
 const VOICE_IDS = [
   'apple', 'ball', 'cat', 'dog', 'egg', 'fish', 'grapes', 'hat', 'ice-cream', 'juice', 'kite',
   'lion', 'moon', 'nose', 'orange', 'panda', 'rabbit', 'sun', 'train', 'umbrella', 'whale', 'zebra',
   'bear', 'bird', 'cow', 'duck', 'elephant', 'frog', 'horse', 'monkey', 'pig', 'turtle', 'bee',
   'sheep', 'bus', 'car', 'crane-truck', 'excavator', 'fire-truck', 'garbage-truck', 'helicopter',
-  'loader', 'police-car', 'ship', 'tractor', 'dump-truck', 'banana', 'carrot', 'cherries', 'lemon',
+  'leaf', 'police-car', 'ship', 'tractor', 'dump-truck', 'banana', 'carrot', 'cherries', 'lemon',
   'mango', 'pear', 'strawberry', 'tomato', 'watermelon', 'book', 'cup', 'toothbrush', 'ant',
   'airplane', 'bread', 'butterfly', 'cake', 'camel', 'dolphin', 'door', 'fork', 'goat', 'giraffe',
   'key', 'lamp', 'milk', 'octopus', 'owl', 'penguin', 'robot', 'spoon', 'star', 'tiger', 'unicorn',
@@ -13,11 +13,13 @@ const VOICE_IDS = [
 const CORE_ASSETS = [
   './',
   './manifest.webmanifest',
+  './icon-64.png',
   './icon-192.png',
   './icon-512.png',
   './og.png',
   './things/object-atlas-v2.png',
   './things/expanded-object-atlas-v1.png',
+  './things/leaf-v1.png',
   './audio/music/gentle-ocean-play.mp3',
   ...VOICE_IDS.map((id) => `./audio/voice/items/${id}.mp3`),
 ];

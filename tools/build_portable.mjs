@@ -39,7 +39,7 @@ const html = `<!doctype html>
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="light">
   <title>AlphabetAndThings｜字母和好朋友</title>
-  <link rel="icon" href="icon-192.png">
+  <link rel="icon" type="image/png" sizes="64x64" href="icon-64.png">
   <style>${stylesheet.replaceAll('</style', '<\\/style')}</style>
 </head>
 <body>
@@ -68,6 +68,7 @@ await writeFile(
 );
 await cp(join(webDir, 'public', 'audio'), join(outputDir, 'audio'), { recursive: true });
 await cp(join(webDir, 'public', 'things'), join(outputDir, 'things'), { recursive: true });
+await cp(join(webDir, 'public', 'icon-64.png'), join(outputDir, 'icon-64.png'));
 await cp(join(webDir, 'public', 'icon-192.png'), join(outputDir, 'icon-192.png'));
 
 console.log(`Portable game created: ${outputDir}`);

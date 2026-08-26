@@ -102,6 +102,24 @@ const expandedAtlas = (
   },
 });
 
+const directImage = (
+  id: string,
+  letter: string,
+  word: string,
+  chinese: string,
+  category: ItemCategory,
+  src: string,
+): GameItem => ({
+  id,
+  letter,
+  word,
+  chinese,
+  category,
+  color: COLORS[letter],
+  audio: `audio/voice/items/${id}.mp3`,
+  image: { kind: 'direct', src },
+});
+
 export const CORE_ITEMS: GameItem[] = [
   baseAtlas('apple', 'A', 'Apple', '苹果', 'fruit', 0, 0),
   baseAtlas('ball', 'B', 'Ball', '球', 'daily', 1, 0),
@@ -147,7 +165,7 @@ export const EXPANDED_ITEMS: GameItem[] = [
   expandedAtlas('fire-truck', 'F', 'Fire truck', '消防车', 'vehicle', 4, 2),
   expandedAtlas('garbage-truck', 'G', 'Garbage truck', '垃圾车', 'vehicle', 5, 2),
   expandedAtlas('helicopter', 'H', 'Helicopter', '直升机', 'vehicle', 0, 3),
-  expandedAtlas('loader', 'L', 'Loader', '装载机', 'vehicle', 1, 3),
+  directImage('leaf', 'L', 'Leaf', '叶子', 'nature', 'things/leaf-v1.png'),
   expandedAtlas('police-car', 'P', 'Police car', '警车', 'vehicle', 2, 3),
   expandedAtlas('ship', 'S', 'Ship', '轮船', 'vehicle', 3, 3),
   expandedAtlas('tractor', 'T', 'Tractor', '拖拉机', 'vehicle', 4, 3),

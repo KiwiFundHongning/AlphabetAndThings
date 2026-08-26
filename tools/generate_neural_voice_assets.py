@@ -13,12 +13,16 @@ import edge_tts
 
 
 ENGLISH_VOICE = "en-US-AvaNeural"
+LETTER_VOICE = "en-US-JennyNeural"
 CHINESE_VOICE = "zh-CN-XiaoxiaoNeural"
+LETTER_RATE = "-18%"
+ENGLISH_WORD_VOICE_OVERRIDES = {
+    # Ava shifts these short vowels; Jenny passed the focused recognition set.
+    "fish": "en-US-JennyNeural",
+    "rabbit": "en-US-JennyNeural",
+}
 LETTER_NAMES = {
-    "A": "ay", "B": "bee", "C": "see", "D": "dee", "E": "E", "F": "eff",
-    "G": "gee", "H": "aitch", "I": "eye", "J": "jay", "K": "kay", "L": "el",
-    "M": "em", "N": "en", "O": "oh", "P": "pea", "R": "are", "S": "ess",
-    "T": "tea", "U": "you", "W": "double you", "Z": "zee",
+    letter: letter for letter in "ABCDEFGHIJKLMNOPRSTUWZ"
 }
 
 # id, letter, English word, Simplified Chinese word
@@ -46,7 +50,7 @@ ITEMS = [
     ("fire-truck", "F", "Fire truck", "消防车"),
     ("garbage-truck", "G", "Garbage truck", "垃圾车"),
     ("helicopter", "H", "Helicopter", "直升机"),
-    ("loader", "L", "Loader", "装载机"),
+    ("leaf", "L", "Leaf", "叶子"),
     ("police-car", "P", "Police car", "警车"), ("ship", "S", "Ship", "轮船"),
     ("tractor", "T", "Tractor", "拖拉机"),
     ("dump-truck", "D", "Dump truck", "自卸卡车"),
@@ -73,10 +77,16 @@ ITEMS = [
 ]
 
 
-async def synthesize(text: str, voice: str, destination: Path, semaphore: asyncio.Semaphore) -> None:
+async def synthesize(
+    text: str,
+    voice: str,
+    destination: Path,
+    semaphore: asyncio.Semaphore,
+    rate: str | None = None,
+) -> None:
     async with semaphore:
-        rate = "-10%" if voice == CHINESE_VOICE else "-4%"
-        await edge_tts.Communicate(text, voice, rate=rate, volume="+0%").save(str(destination))
+        speech_rate = rate or ("-10%" if voice == CHINESE_VOICE else "-4%")
+        await edge_tts.Communicate(text, voice, rate=speech_rate, volume="+0%").save(str(destination))
 
 
 def combine_segments(
@@ -95,7 +105,9 @@ def combine_segments(
         "start_threshold=-60dB,areverse"
     )
     filters = (
-        f"[0:a]{trim}[letter];[1:a]{trim}[word];[2:a]{trim}[chinese];"
+        # Jenny reads isolated uppercase letters reliably. A small tempo stretch
+        # keeps short long-vowel names such as E and P clear without changing pitch.
+        f"[0:a]{trim},atempo=0.75[letter];[1:a]{trim}[word];[2:a]{trim}[chinese];"
         f"anullsrc=r=24000:cl=mono:d={letter_word_pause:.3f}[letter_pause];"
         f"anullsrc=r=24000:cl=mono:d={word_chinese_pause:.3f}[chinese_pause];"
         "[letter][letter_pause][word][chinese_pause][chinese]"
@@ -127,7 +139,7 @@ async def generate(
         temp_root = Path(temp_dir)
         letter_files = {letter: temp_root / f"letter-{letter.lower()}.mp3" for letter in LETTER_NAMES}
         await asyncio.gather(*[
-            synthesize(LETTER_NAMES[letter], ENGLISH_VOICE, path, semaphore)
+            synthesize(LETTER_NAMES[letter], LETTER_VOICE, path, semaphore, LETTER_RATE)
             for letter, path in letter_files.items()
         ])
 
@@ -139,7 +151,12 @@ async def generate(
             chinese_file = temp_root / f"{item_id}-zh.mp3"
             sources.append((item_id, letter, word, chinese, word_file, chinese_file))
             jobs.extend([
-                synthesize(word, ENGLISH_VOICE, word_file, semaphore),
+                synthesize(
+                    word,
+                    ENGLISH_WORD_VOICE_OVERRIDES.get(item_id, ENGLISH_VOICE),
+                    word_file,
+                    semaphore,
+                ),
                 synthesize(chinese, CHINESE_VOICE, chinese_file, semaphore),
             ])
         await asyncio.gather(*jobs)
@@ -155,8 +172,11 @@ async def generate(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--letter-word-pause", type=float, default=0.8)
-    parser.add_argument("--word-chinese-pause", type=float, default=0.45)
+    # Edge voice segments carry about 0.20–0.25 seconds of safe leading pad.
+    # These explicit gaps produce measured pauses of about 0.8 and 0.45 seconds
+    # without trimming quiet initial consonants such as P.
+    parser.add_argument("--letter-word-pause", type=float, default=0.55)
+    parser.add_argument("--word-chinese-pause", type=float, default=0.25)
     parser.add_argument("--ids", help="Optional comma-separated item ids")
     args = parser.parse_args()
     selected_ids = {value.strip() for value in args.ids.split(",") if value.strip()} if args.ids else None

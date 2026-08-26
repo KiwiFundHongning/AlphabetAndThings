@@ -33,7 +33,7 @@ def main() -> None:
 
     source = DATA_FILE.read_text(encoding="utf-8")
     items = load_voice_items()
-    game_ids = re.findall(r"(?:baseAtlas|expandedAtlas|extension)\('([^']+)'", source)
+    game_ids = re.findall(r"(?:baseAtlas|expandedAtlas|directImage|extension)\('([^']+)'", source)
     voice_ids = [item_id for item_id, *_ in items]
     if len(game_ids) != len(set(game_ids)):
         raise AssertionError("Duplicate ids exist in game-data.ts")
@@ -56,6 +56,11 @@ def main() -> None:
         if not path.is_file() or path.stat().st_size < 100_000:
             raise AssertionError(f"Missing or unexpectedly small image atlas: {path}")
 
+    for name in ("leaf-v1.png", "../icon-64.png", "../icon-192.png", "../icon-512.png"):
+        path = THINGS_DIR / name
+        if not path.is_file() or path.stat().st_size < 1_000:
+            raise AssertionError(f"Missing or unexpectedly small direct image: {path}")
+
     pause_failures = []
     missing = []
     for item_id in voice_ids:
@@ -73,7 +78,7 @@ def main() -> None:
             float(value) for value in re.findall(r"silence_duration:\s*([0-9.]+)", result.stderr)
             if float(value) >= 0.35
         ]
-        if len(durations) < 2 or not (0.70 <= durations[0] <= 1.20) or not (0.35 <= durations[1] <= 0.80):
+        if len(durations) < 2 or not (0.75 <= durations[0] <= 0.95) or not (0.40 <= durations[1] <= 0.60):
             pause_failures.append((item_id, durations[:2]))
 
     if missing:
@@ -81,12 +86,12 @@ def main() -> None:
     if pause_failures:
         raise AssertionError(f"Pause checks failed: {pause_failures}")
 
-    builtin_count = len(re.findall(r"(?:baseAtlas|expandedAtlas)\('", source))
+    builtin_count = len(re.findall(r"(?:baseAtlas|expandedAtlas|directImage)\('", source))
     extension_count = len(re.findall(r"extension\('", source))
     print(f"PASS: {builtin_count} built-in items, {extension_count} local extension items")
     print(f"PASS: {len(voice_ids)} audio clips with two valid pauses")
     print(f"PASS: {len(cached_voice_ids)} audio clips are included in the offline cache")
-    print("PASS: both local image atlases are present")
+    print("PASS: local image atlases, leaf art, and application icons are present")
 
 
 if __name__ == "__main__":

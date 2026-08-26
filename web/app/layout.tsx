@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   description: '含四档难度与 58 个内置物品，无需登录、记录只存本机的三岁儿童中英双语字母认知小游戏。',
   manifest: 'manifest.webmanifest',
   icons: {
-    icon: 'icon-192.png',
+    icon: [{ url: 'icon-64.png', type: 'image/png', sizes: '64x64' }],
     apple: 'icon-192.png',
   },
   openGraph: {
